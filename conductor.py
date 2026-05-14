@@ -512,6 +512,42 @@ def op_inbox_read(
     ]
 
 
+def op_inbox_ack(*, message_id: str, by: str) -> str:
+    """Append a `kind: ack` message; idempotent — if an ack from `by` for
+    `message_id` already exists, return its id without writing."""
+    by_role = Role(by)
+    with inbox_lock():
+        text = _read_inbox_text()
+        msgs = parse_inbox(text)
+        for m in msgs:
+            if (
+                m.kind is Kind.ACK
+                and m.re == message_id
+                and m.from_ == by_role
+            ):
+                return m.id
+        # Recipient of the ack: the original message's sender, or `both`.
+        target = Role.BOTH
+        for m in msgs:
+            if m.id == message_id:
+                target = m.from_
+                break
+        new_id = _next_message_id(text)
+        ts = _now_utc()
+        ack = Message(
+            id=new_id,
+            from_=by_role,
+            to=target,
+            ts=ts,
+            kind=Kind.ACK,
+            re=message_id,
+            body=f"ack: {message_id} by {by} @ {ts.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        )
+        with open(_inbox_path(), "a") as fh:
+            fh.write(format_message(ack))
+        return new_id
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
