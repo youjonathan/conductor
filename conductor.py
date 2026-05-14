@@ -898,6 +898,39 @@ def op_proposal_edit_body(*, id: str, actor: str, body: str) -> str:
     return "ok"
 
 
+def op_state() -> dict:
+    """Return a compact summary of bus state. Used by /planner and /builder boot."""
+    with proposals_lock():
+        props = parse_proposals(_read_proposals_text())
+    with inbox_lock():
+        msgs = parse_inbox(_read_inbox_text())
+
+    status_counts: dict[str, int] = {}
+    for p in props:
+        status_counts[p.status.slug] = status_counts.get(p.status.slug, 0) + 1
+
+    unacked = {"planner": 0, "builder": 0, "human": 0, "codex": 0}
+    for role_name in unacked:
+        role_enum = Role(role_name)
+        acked = {m.re for m in msgs if m.kind is Kind.ACK and m.from_ == role_enum and m.re}
+        unacked[role_name] = sum(
+            1 for m in msgs
+            if m.to in (role_enum, Role.BOTH) and m.kind is not Kind.ACK and m.id not in acked
+        )
+
+    last_activity = msgs[-1].ts.strftime("%Y-%m-%dT%H:%M:%SZ") if msgs else None
+    in_progress = [p.id for p in props if p.status is Status.IN_PROGRESS]
+    retry_counts = {p.id: p.retry_count for p in props if p.status is Status.IN_PROGRESS}
+
+    return {
+        "status_counts": status_counts,
+        "unacked": unacked,
+        "last_activity": last_activity,
+        "in_progress": in_progress,
+        "retry_counts": retry_counts,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
