@@ -32,7 +32,7 @@ conductor = "conductor:main"
 dev = ["pytest>=7", "pytest-asyncio>=0.21"]
 
 [tool.setuptools]
-py-modules = ["conductor"]
+py-modules = ["conductor", "conductor_mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["."]
