@@ -8,13 +8,12 @@ This repo is the v1 adapter — a single-file Python CLI both sessions invoke
 to read and mutate the shared state.
 
 ```
-                     ┌──────────────────────────────┐
-                     │   .conductor/                │
-   ┌──────────┐      │   ├── inbox.lock             │      ┌──────────┐
-   │ Planner  │◄────►│   ├── proposals.lock         │◄────►│ Builder  │
-   │ (Claude) │      │   ├── Conductor Inbox.md     │      │ (Claude) │
-   └──────────┘      │   └── Conductor Proposals.md │      └──────────┘
-                     └──────────────────────────────┘
+                     ┌──────────────────────────────────┐
+                     │   $CONDUCTOR_DIR/                │
+   ┌──────────┐      │   ├── Conductor Inbox.md         │      ┌──────────┐
+   │ Planner  │◄────►│   ├── Conductor Proposals.md     │◄────►│ Builder  │
+   │ (Claude) │      │   └── .conductor/{*.lock}        │      │ (Claude) │
+   └──────────┘      └──────────────────────────────────┘      └──────────┘
                                    ▲
                                    │  approves / rejects
                               ┌─────────┐
@@ -38,7 +37,7 @@ Each transition is gated by which actor is allowed to make it (`planner`,
 ## Quickstart
 
 ```bash
-git clone <this-repo> && cd hartford
+git clone https://github.com/youjonathan/conductor.git && cd conductor
 pytest -v              # 12 test files, full coverage of the op surface
 ./scripts/demo.sh      # run one full proposal lifecycle through the CLI
 ```
