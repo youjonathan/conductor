@@ -1,5 +1,9 @@
 # Conductor
 
+[![tests](https://github.com/youjonathan/conductor/actions/workflows/test.yml/badge.svg)](https://github.com/youjonathan/conductor/actions/workflows/test.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![python: 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](pyproject.toml)
+
 *How many Claude Code terminals do you have open right now? How often are
 you pasting output from one into another? For me, too often, so I built
 them a bus.*
