@@ -357,6 +357,55 @@ def format_proposal(prop: Proposal) -> str:
     return "\n".join(lines) + "\n"
 
 
+import fcntl
+import os as _os
+from contextlib import contextmanager
+from pathlib import Path as _Path
+
+
+def _conductor_dir() -> _Path:
+    val = _os.environ.get("CONDUCTOR_DIR")
+    if not val:
+        raise RuntimeError("CONDUCTOR_DIR is not set")
+    return _Path(val)
+
+
+@contextmanager
+def _flock(lockfile: _Path):
+    """Exclusive blocking flock context manager."""
+    fd = _os.open(str(lockfile), _os.O_RDWR | _os.O_CREAT)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            _os.close(fd)
+
+
+@contextmanager
+def inbox_lock():
+    """Exclusive lock on the Inbox file."""
+    with _flock(_conductor_dir() / ".conductor" / "inbox.lock"):
+        yield
+
+
+@contextmanager
+def proposals_lock():
+    """Exclusive lock on the Proposals file."""
+    with _flock(_conductor_dir() / ".conductor" / "proposals.lock"):
+        yield
+
+
+@contextmanager
+def supermutation():
+    """Two-lock supermutation: proposals.lock → inbox.lock, fixed order (§8.1)."""
+    with proposals_lock():
+        with inbox_lock():
+            yield
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
