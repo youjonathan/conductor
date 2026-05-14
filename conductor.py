@@ -660,6 +660,59 @@ def op_proposal_read(*, id: str | None, status: str | None) -> list[dict]:
     ]
 
 
+class FSMError(ValueError):
+    """Raised when a status transition is not permitted."""
+
+
+# Mapping of (from_status, to_status) → set of allowed actors.
+# Resume (⏸️ → prior) is handled separately because it requires the proposal's
+# `status_paused_from` field; not encoded here.
+FSM_TRANSITIONS: dict[tuple[Status, Status], set[Role]] = {
+    (Status.DRAFTING, Status.AWAITING_JONATHAN): {Role.PLANNER, Role.BUILDER},
+    (Status.AWAITING_JONATHAN, Status.APPROVED): {Role.HUMAN},
+    (Status.AWAITING_JONATHAN, Status.REJECTED): {Role.HUMAN},
+    (Status.AWAITING_JONATHAN, Status.DRAFTING): {Role.HUMAN},
+    (Status.APPROVED, Status.DRAFTING): {Role.HUMAN},
+    (Status.APPROVED, Status.IN_PROGRESS): {Role.BUILDER},
+    (Status.APPROVED, Status.DONE): {Role.PLANNER},
+    (Status.IN_PROGRESS, Status.DONE): {Role.BUILDER},
+    (Status.IN_PROGRESS, Status.APPROVED): {Role.BUILDER},        # retry
+    (Status.IN_PROGRESS, Status.AWAITING_JONATHAN): {Role.BUILDER},  # escalate
+    (Status.IN_PROGRESS, Status.REJECTED): {Role.BUILDER, Role.HUMAN},
+    (Status.DRAFTING, Status.REJECTED): {Role.BUILDER, Role.HUMAN},
+}
+
+# Any non-terminal state may pause.
+_PAUSABLE = {
+    Status.DRAFTING, Status.AWAITING_JONATHAN, Status.APPROVED, Status.IN_PROGRESS
+}
+
+
+def validate_transition(
+    from_status: Status, to_status: Status, actor: Role
+) -> None:
+    """Raise FSMError if the (from, to, actor) transition is not permitted."""
+    if to_status is Status.PAUSED:
+        if from_status not in _PAUSABLE:
+            raise FSMError(
+                f"cannot pause from terminal/paused state {from_status.slug}: invalid transition"
+            )
+        if actor not in {Role.PLANNER, Role.BUILDER, Role.HUMAN}:
+            raise FSMError(f"actor {actor.value} cannot pause")
+        return
+    allowed = FSM_TRANSITIONS.get((from_status, to_status))
+    if allowed is None:
+        raise FSMError(
+            f"transition {from_status.slug} → {to_status.slug} is not permitted"
+        )
+    if actor not in allowed:
+        raise FSMError(
+            f"actor {actor.value} cannot make transition "
+            f"{from_status.slug} → {to_status.slug}; allowed: "
+            f"{sorted(a.value for a in allowed)}"
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
