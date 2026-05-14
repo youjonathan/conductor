@@ -8,7 +8,7 @@ import argparse
 import re as _re
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone as _tz
 from enum import Enum
 from typing import Optional
 
@@ -404,6 +404,62 @@ def supermutation():
     with proposals_lock():
         with inbox_lock():
             yield
+
+
+def _inbox_path() -> _Path:
+    return _conductor_dir() / "Conductor Inbox.md"
+
+
+def _proposals_path() -> _Path:
+    return _conductor_dir() / "Conductor Proposals.md"
+
+
+def _read_inbox_text() -> str:
+    p = _inbox_path()
+    return p.read_text() if p.exists() else "# Conductor Inbox\n"
+
+
+def _next_message_id(text: str) -> str:
+    msgs = parse_inbox(text)
+    n = max((int(m.id.split("-")[1]) for m in msgs), default=0) + 1
+    return f"M-{n:04d}"
+
+
+def _now_utc() -> datetime:
+    return datetime.now(tz=_tz.utc).replace(microsecond=0)
+
+
+def op_inbox_append(
+    *,
+    from_: str,
+    to: str,
+    kind: str,
+    body: str,
+    proposal: str | None,
+    re: str | None,
+    verdict: str | None,
+    for_version: int | None,
+) -> str:
+    """Append a message; return its new M-NNNN id."""
+    with inbox_lock():
+        text = _read_inbox_text()
+        new_id = _next_message_id(text)
+        msg = Message(
+            id=new_id,
+            from_=Role(from_),
+            to=Role(to),
+            ts=_now_utc(),
+            kind=Kind(kind),
+            verdict=Verdict(verdict) if verdict else None,
+            for_version=for_version,
+            re=re,
+            proposal=proposal,
+            body=body,
+        )
+        rendered = format_message(msg)
+        with open(_inbox_path(), "a") as fh:
+            fh.write(rendered)
+        return new_id
 
 
 def build_parser() -> argparse.ArgumentParser:
