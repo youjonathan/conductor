@@ -853,6 +853,51 @@ def op_proposal_set_status(
     return "ok"
 
 
+def op_proposal_edit_body(*, id: str, actor: str, body: str) -> str:
+    """Edit a proposal's body. Only legal at 🔵 drafting. Bumps version.
+    Returns 'ok'."""
+    parsed = _parse_proposal_body(body)
+    with supermutation():
+        props = parse_proposals(_read_proposals_text())
+        for idx, p in enumerate(props):
+            if p.id == id:
+                break
+        else:
+            raise ValueError(f"proposal {id} not found")
+
+        if p.status is not Status.DRAFTING:
+            raise FSMError(
+                f"cannot edit body at status {p.status.slug}; "
+                f"requires 🔵 drafting (humans: flip via proposal-set-status first)"
+            )
+
+        p.version += 1
+        p.summary = parsed["summary"]
+        p.motivation = parsed["motivation"]
+        p.scope = parsed["scope"]
+        p.acceptance = parsed["acceptance"]
+        p.evidence = parsed["evidence"]
+
+        props[idx] = p
+        _write_proposals_text(_serialize_proposals(props))
+
+        # Emit a body-edit note to the inbox so the trail shows the version bump.
+        text = _read_inbox_text()
+        new_id = _next_message_id(text)
+        note = Message(
+            id=new_id,
+            from_=Role(actor),
+            to=Role.BOTH,
+            ts=_now_utc(),
+            kind=Kind.NOTE,
+            proposal=id,
+            body=f"body edited by {actor}; version → {p.version}",
+        )
+        with open(_inbox_path(), "a") as fh:
+            fh.write(format_message(note))
+    return "ok"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
