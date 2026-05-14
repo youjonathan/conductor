@@ -110,9 +110,11 @@ delegated):
    `conductor inbox-append --from builder --to codex --kind note --proposal P-NNN`
    with the handoff body on stdin.
 6. Invoke the `codex:rescue` skill with the handoff content.
-7. When Codex returns: log its complete response verbatim as
-   `[from: codex → builder] [in_reply_to: <handoff-id>] [kind: note]`.
-   No commentary inside this message.
+7. When Codex returns: log its complete response verbatim via
+   `conductor inbox-append --from codex --to builder --kind note --in-reply-to <handoff-id>`
+   with the response body on stdin. The resulting Inbox entry renders as
+   `[from: codex → builder] [re: <handoff-id>] [kind: note]`. No commentary
+   inside this message.
 
 ## Verification
 
@@ -125,9 +127,12 @@ After logging Codex's response:
    is a hard flag.
 3. Spot-read each changed file.
 
-Then post `[from: builder → human] [kind: review] [verdict: <ok|needs-change>] [for_version: <current>] [proposal: P-NNN]`
-with verification results and a recommendation (`ready-to-merge` / `retry` /
-`escalate` / `abandon`).
+Then post a review via `conductor inbox-append --from builder --to human
+--kind review --verdict <approved-for-human|needs-change|unclear>
+--for-version <current> --proposal P-NNN` with verification results on
+stdin and a recommendation (`ready-to-merge` / `retry` / `escalate` /
+`abandon`). Use `approved-for-human` for ready-to-merge; `needs-change`
+for retry or fixable failures; `unclear` when verification can't decide.
 
 ## Failure handling
 
