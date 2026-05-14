@@ -44,12 +44,12 @@ def _create(tmp_path, monkeypatch) -> str:
 
 def _converge(pid: str):
     """Helper: simulate convergence so 🔵→🟡 is legal in tests by direct status flip."""
-    op_proposal_set_status(id=pid, new_status="awaiting-jonathan", actor="planner")
+    op_proposal_set_status(id=pid, new_status="awaiting-jonathan", by="planner")
 
 
 def test_set_status_drafting_to_awaiting_by_planner(tmp_path, monkeypatch):
     pid = _create(tmp_path, monkeypatch)
-    op_proposal_set_status(id=pid, new_status="awaiting-jonathan", actor="planner")
+    op_proposal_set_status(id=pid, new_status="awaiting-jonathan", by="planner")
     p = op_proposal_read(id=pid, status=None)[0]
     assert p["status"] == "awaiting-jonathan"
     msgs = parse_inbox((tmp_path / "Conductor Inbox.md").read_text())
@@ -62,7 +62,7 @@ def test_set_status_human_only_rejects_planner(tmp_path, monkeypatch):
     pid = _create(tmp_path, monkeypatch)
     _converge(pid)
     try:
-        op_proposal_set_status(id=pid, new_status="approved", actor="planner")
+        op_proposal_set_status(id=pid, new_status="approved", by="planner")
     except Exception as exc:
         assert "actor" in str(exc).lower()
     else:
@@ -73,7 +73,7 @@ def test_set_status_atomic_approval_sets_executor_and_delegation(tmp_path, monke
     pid = _create(tmp_path, monkeypatch)
     _converge(pid)
     op_proposal_set_status(
-        id=pid, new_status="approved", actor="human",
+        id=pid, new_status="approved", by="human",
         executor="planner",
         delegated_to="builder",
         delegated_paths=["Projects/VHIL-E/VHIL-E System Design v2.md"],
@@ -88,19 +88,19 @@ def test_set_status_atomic_approval_sets_executor_and_delegation(tmp_path, monke
 def test_set_status_same_state_noop(tmp_path, monkeypatch, capsys):
     pid = _create(tmp_path, monkeypatch)
     _converge(pid)
-    rc = op_proposal_set_status(id=pid, new_status="awaiting-jonathan", actor="planner")
+    rc = op_proposal_set_status(id=pid, new_status="awaiting-jonathan", by="planner")
     assert rc == "noop"
 
 
 def test_set_status_executor_to_in_progress_resets_retry(tmp_path, monkeypatch):
     pid = _create(tmp_path, monkeypatch)
     _converge(pid)
-    op_proposal_set_status(id=pid, new_status="approved", actor="human")
-    op_proposal_set_status(id=pid, new_status="in-progress", actor="builder")
-    op_proposal_set_status(id=pid, new_status="approved", actor="builder")  # retry
+    op_proposal_set_status(id=pid, new_status="approved", by="human")
+    op_proposal_set_status(id=pid, new_status="in-progress", by="builder")
+    op_proposal_set_status(id=pid, new_status="approved", by="builder")  # retry
     p = op_proposal_read(id=pid, status=None)[0]
     assert p["retry_count"] == 1
-    op_proposal_set_status(id=pid, new_status="in-progress", actor="builder")
+    op_proposal_set_status(id=pid, new_status="in-progress", by="builder")
     p2 = op_proposal_read(id=pid, status=None)[0]
     # fresh execution attempt: retry_count resets to 0
     assert p2["retry_count"] == 0
@@ -109,14 +109,14 @@ def test_set_status_executor_to_in_progress_resets_retry(tmp_path, monkeypatch):
 def test_set_status_third_retry_rejected(tmp_path, monkeypatch):
     pid = _create(tmp_path, monkeypatch)
     _converge(pid)
-    op_proposal_set_status(id=pid, new_status="approved", actor="human")
-    op_proposal_set_status(id=pid, new_status="in-progress", actor="builder")
-    op_proposal_set_status(id=pid, new_status="approved", actor="builder")  # retry 1
-    op_proposal_set_status(id=pid, new_status="in-progress", actor="builder")
-    op_proposal_set_status(id=pid, new_status="approved", actor="builder")  # retry 2
-    op_proposal_set_status(id=pid, new_status="in-progress", actor="builder")
+    op_proposal_set_status(id=pid, new_status="approved", by="human")
+    op_proposal_set_status(id=pid, new_status="in-progress", by="builder")
+    op_proposal_set_status(id=pid, new_status="approved", by="builder")  # retry 1
+    op_proposal_set_status(id=pid, new_status="in-progress", by="builder")
+    op_proposal_set_status(id=pid, new_status="approved", by="builder")  # retry 2
+    op_proposal_set_status(id=pid, new_status="in-progress", by="builder")
     try:
-        op_proposal_set_status(id=pid, new_status="approved", actor="builder")  # retry 3
+        op_proposal_set_status(id=pid, new_status="approved", by="builder")  # retry 3
     except Exception as exc:
         assert "retry" in str(exc).lower()
     else:
@@ -125,7 +125,7 @@ def test_set_status_third_retry_rejected(tmp_path, monkeypatch):
 
 def test_set_status_pause_records_paused_from(tmp_path, monkeypatch):
     pid = _create(tmp_path, monkeypatch)
-    op_proposal_set_status(id=pid, new_status="paused", actor="planner")
+    op_proposal_set_status(id=pid, new_status="paused", by="planner")
     p = op_proposal_read(id=pid, status=None)[0]
     assert p["status"] == "paused"
     assert p["status_paused_from"] == "drafting"
@@ -133,8 +133,8 @@ def test_set_status_pause_records_paused_from(tmp_path, monkeypatch):
 
 def test_set_status_resume_returns_to_paused_from(tmp_path, monkeypatch):
     pid = _create(tmp_path, monkeypatch)
-    op_proposal_set_status(id=pid, new_status="paused", actor="planner")
-    op_proposal_set_status(id=pid, new_status="drafting", actor="planner")  # resume
+    op_proposal_set_status(id=pid, new_status="paused", by="planner")
+    op_proposal_set_status(id=pid, new_status="drafting", by="planner")  # resume
     p = op_proposal_read(id=pid, status=None)[0]
     assert p["status"] == "drafting"
     assert p["status_paused_from"] is None

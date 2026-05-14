@@ -42,6 +42,13 @@ class Verdict(str, Enum):
     UNCLEAR = "unclear"
 
 
+class ProposalKind(str, Enum):
+    FEATURE = "feature"
+    DRIFT = "drift"
+    REFACTOR = "refactor"
+    IDEA = "idea"
+
+
 class Status(Enum):
     DRAFTING = ("drafting", "🔵")
     AWAITING_JONATHAN = ("awaiting-jonathan", "🟡")
@@ -71,7 +78,7 @@ class Message:
     ts: datetime
     kind: Kind
     body: str
-    re: Optional[str] = None
+    in_reply_to: Optional[str] = None
     proposal: Optional[str] = None
     verdict: Optional[Verdict] = None
     for_version: Optional[int] = None
@@ -88,7 +95,7 @@ class Message:
 class Proposal:
     id: str
     title: str
-    kind: str  # "feature" | "drift" | "refactor" | "idea"
+    kind: ProposalKind
     version: int
     executor: Role
     status: Status
@@ -166,7 +173,7 @@ def parse_inbox(text: str) -> list[Message]:
                 kind=Kind(tags["kind"]),
                 verdict=Verdict(verdict_str) if verdict_str else None,
                 for_version=int(for_version_str) if for_version_str else None,
-                re=tags.get("re"),
+                in_reply_to=tags.get("re"),
                 proposal=tags.get("proposal"),
                 body=body,
             )
@@ -186,8 +193,8 @@ def format_message(msg: Message) -> str:
         tags.append(f"[verdict: {msg.verdict.value}]")
     if msg.for_version is not None:
         tags.append(f"[for_version: {msg.for_version}]")
-    if msg.re is not None:
-        tags.append(f"[re: {msg.re}]")
+    if msg.in_reply_to is not None:
+        tags.append(f"[re: {msg.in_reply_to}]")
     if msg.proposal is not None:
         tags.append(f"[proposal: {msg.proposal}]")
     tag_line = " ".join(tags)
@@ -291,7 +298,7 @@ def parse_proposals(text: str) -> list[Proposal]:
             Proposal(
                 id=hdr.group("id"),
                 title=hdr.group("title").strip(),
-                kind=fields["kind"],
+                kind=ProposalKind(fields["kind"]),
                 version=int(fields["version"]),
                 executor=Role(fields["executor"]),
                 status=status,
@@ -324,7 +331,7 @@ def format_proposal(prop: Proposal) -> str:
     lines = [
         f"## {prop.id} — {prop.title}",
         status_line,
-        f"- **Kind:** {prop.kind}",
+        f"- **Kind:** {prop.kind.value}",
         f"- **Version:** {prop.version}",
         f"- **Executor:** {prop.executor.value}",
     ]
@@ -437,7 +444,7 @@ def op_inbox_append(
     kind: str,
     body: str,
     proposal: str | None,
-    re: str | None,
+    in_reply_to: str | None,
     verdict: str | None,
     for_version: int | None,
 ) -> str:
@@ -453,7 +460,7 @@ def op_inbox_append(
             kind=Kind(kind),
             verdict=Verdict(verdict) if verdict else None,
             for_version=for_version,
-            re=re,
+            in_reply_to=in_reply_to,
             proposal=proposal,
             body=body,
         )
@@ -466,7 +473,7 @@ def op_inbox_append(
 def op_inbox_read(
     *,
     role: str | None,
-    unacked_only: bool,
+    unacked: bool,
     since: str | None,
     proposal: str | None,
 ) -> list[dict]:
@@ -488,11 +495,11 @@ def op_inbox_read(
 
     filtered = [m for m in msgs if _matches(m)]
 
-    if unacked_only and role_enum is not None:
-        # An ack: kind=ack, from=role, re=<original id>
+    if unacked and role_enum is not None:
+        # An ack: kind=ack, from=role, in_reply_to=<original id>
         acked_ids = {
-            m.re for m in msgs
-            if m.kind is Kind.ACK and m.from_ == role_enum and m.re
+            m.in_reply_to for m in msgs
+            if m.kind is Kind.ACK and m.from_ == role_enum and m.in_reply_to
         }
         # Self-filter: don't surface role X's own messages as awaiting X's ack
         # (the `proposal-set-status` supermutation posts audit notes addressed
@@ -511,7 +518,7 @@ def op_inbox_read(
             "kind": m.kind.value,
             "verdict": m.verdict.value if m.verdict else None,
             "for_version": m.for_version,
-            "re": m.re,
+            "in_reply_to": m.in_reply_to,
             "proposal": m.proposal,
             "body": m.body,
         }
@@ -529,7 +536,7 @@ def op_inbox_ack(*, message_id: str, by: str) -> str:
         for m in msgs:
             if (
                 m.kind is Kind.ACK
-                and m.re == message_id
+                and m.in_reply_to == message_id
                 and m.from_ == by_role
             ):
                 return m.id
@@ -547,7 +554,7 @@ def op_inbox_ack(*, message_id: str, by: str) -> str:
             to=target,
             ts=ts,
             kind=Kind.ACK,
-            re=message_id,
+            in_reply_to=message_id,
             body=f"ack: {message_id} by {by} @ {ts.strftime('%Y-%m-%dT%H:%M:%SZ')}",
         )
         with open(_inbox_path(), "a") as fh:
@@ -609,7 +616,7 @@ def op_proposal_create(
         prop = Proposal(
             id=new_id,
             title=title,
-            kind=kind,
+            kind=ProposalKind(kind),
             version=1,
             executor=Role(executor),
             status=Status.DRAFTING,
@@ -645,7 +652,7 @@ def op_proposal_read(*, id: str | None, status: str | None) -> list[dict]:
         {
             "id": p.id,
             "title": p.title,
-            "kind": p.kind,
+            "kind": p.kind.value,
             "version": p.version,
             "executor": p.executor.value,
             "delegated_to": p.delegated_to.value if p.delegated_to else None,
@@ -751,7 +758,7 @@ def op_proposal_set_status(
     *,
     id: str,
     new_status: str,
-    actor: str,
+    by: str,
     reason: str | None = None,
     executor: str | None = None,
     delegated_to: str | None = None,
@@ -760,7 +767,7 @@ def op_proposal_set_status(
     """Set a proposal's status. Atomically writes both Proposals and an ack to Inbox
     under a two-lock supermutation. Returns 'noop' on same-state writes, else 'ok'."""
     target_status = _resolve_status(new_status)
-    actor_role = Role(actor)
+    by_role = Role(by)
     with supermutation():
         props = parse_proposals(_read_proposals_text())
         for idx, p in enumerate(props):
@@ -784,21 +791,21 @@ def op_proposal_set_status(
             resume_from = p.status_paused_from
             if resume_from is None:
                 raise FSMError("paused proposal has no status_paused_from recorded")
-            # The "actor" for resume is anyone allowed at the from_status's outbound set.
-            # Simplest: allow planner/builder/human (any of the three).
-            if actor_role not in {Role.PLANNER, Role.BUILDER, Role.HUMAN}:
-                raise FSMError(f"actor {actor_role.value} cannot resume")
+            # Resume is allowed by anyone in the planner/builder/human set
+            # (matches the outbound transition set of the paused-from status).
+            if by_role not in {Role.PLANNER, Role.BUILDER, Role.HUMAN}:
+                raise FSMError(f"actor {by_role.value} cannot resume")
             p.status = resume_from
             p.status_paused_from = None
         else:
             # Pause → check pausable
             if target_status is Status.PAUSED:
-                validate_transition(from_status, target_status, actor_role)
+                validate_transition(from_status, target_status, by_role)
                 p.status_paused_from = from_status
                 p.status = Status.PAUSED
             else:
                 # Standard transition
-                validate_transition(from_status, target_status, actor_role)
+                validate_transition(from_status, target_status, by_role)
 
                 # Retry cap: 🟢 → ⚙️ resets per-execution counter to 0 (fresh attempt);
                 # ⚙️ → 🟢 increments per-execution counter AND checks cumulative inbox cap.
@@ -847,12 +854,12 @@ def op_proposal_set_status(
         rsn = f"  (reason: {reason})" if reason else ""
         ack = Message(
             id=new_id,
-            from_=actor_role,
+            from_=by_role,
             to=Role.BOTH,
             ts=_now_utc(),
             kind=Kind.NOTE,
             proposal=id,
-            body=f"status: {from_status.slug} → {p.status.slug} by {actor}{rsn}",
+            body=f"status: {from_status.slug} → {p.status.slug} by {by}{rsn}",
         )
         with open(_inbox_path(), "a") as fh:
             fh.write(format_message(ack))
@@ -860,7 +867,7 @@ def op_proposal_set_status(
     return "ok"
 
 
-def op_proposal_edit_body(*, id: str, actor: str, body: str) -> str:
+def op_proposal_edit_body(*, id: str, by: str, body: str) -> str:
     """Edit a proposal's body. Only legal at 🔵 drafting. Bumps version.
     Returns 'ok'."""
     parsed = _parse_proposal_body(body)
@@ -893,12 +900,12 @@ def op_proposal_edit_body(*, id: str, actor: str, body: str) -> str:
         new_id = _next_message_id(text)
         note = Message(
             id=new_id,
-            from_=Role(actor),
+            from_=Role(by),
             to=Role.BOTH,
             ts=_now_utc(),
             kind=Kind.NOTE,
             proposal=id,
-            body=f"body edited by {actor}; version → {p.version}",
+            body=f"body edited by {by}; version → {p.version}",
         )
         with open(_inbox_path(), "a") as fh:
             fh.write(format_message(note))
@@ -916,10 +923,14 @@ def op_state() -> dict:
     for p in props:
         status_counts[p.status.slug] = status_counts.get(p.status.slug, 0) + 1
 
-    unacked = {"planner": 0, "builder": 0, "human": 0, "codex": 0}
+    # Per-role unacked counts. `BOTH` is a routing target, not an actor — skip it.
+    unacked: dict[str, int] = {r.value: 0 for r in Role if r is not Role.BOTH}
     for role_name in unacked:
         role_enum = Role(role_name)
-        acked = {m.re for m in msgs if m.kind is Kind.ACK and m.from_ == role_enum and m.re}
+        acked = {
+            m.in_reply_to for m in msgs
+            if m.kind is Kind.ACK and m.from_ == role_enum and m.in_reply_to
+        }
         # Self-filter: a role's own messages (e.g. `planner → both` audit notes
         # from supermutations) don't count toward that role's unacked queue.
         unacked[role_name] = sum(
@@ -955,7 +966,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--from", dest="from_", required=True)
     sp.add_argument("--to", required=True)
     sp.add_argument("--kind", required=True)
-    sp.add_argument("--re", default=None)
+    sp.add_argument("--in-reply-to", dest="in_reply_to", default=None)
     sp.add_argument("--proposal", default=None)
     sp.add_argument("--verdict", default=None)
     sp.add_argument("--for-version", dest="for_version", type=int, default=None)
@@ -963,7 +974,7 @@ def build_parser() -> argparse.ArgumentParser:
     # inbox-read
     sp = subs.add_parser("inbox-read")
     sp.add_argument("--role", default=None)
-    sp.add_argument("--unacked-only", action="store_true")
+    sp.add_argument("--unacked", action="store_true")
     sp.add_argument("--since", default=None)
     sp.add_argument("--proposal", default=None)
 
@@ -992,13 +1003,13 @@ def build_parser() -> argparse.ArgumentParser:
     # proposal-edit-body
     sp = subs.add_parser("proposal-edit-body")
     sp.add_argument("--id", required=True)
-    sp.add_argument("--actor", required=True)
+    sp.add_argument("--by", required=True)
 
     # proposal-set-status
     sp = subs.add_parser("proposal-set-status")
     sp.add_argument("--id", required=True)
     sp.add_argument("--new-status", dest="new_status", required=True)
-    sp.add_argument("--actor", required=True)
+    sp.add_argument("--by", required=True)
     sp.add_argument("--reason", default=None)
     sp.add_argument("--executor", default=None)
     sp.add_argument("--delegated-to", dest="delegated_to", default=None)
@@ -1023,13 +1034,13 @@ def main(argv: list[str] | None = None) -> int:
             body = sys.stdin.read()
             new_id = op_inbox_append(
                 from_=args.from_, to=args.to, kind=args.kind, body=body,
-                proposal=args.proposal, re=args.re,
+                proposal=args.proposal, in_reply_to=args.in_reply_to,
                 verdict=args.verdict, for_version=args.for_version,
             )
             print(new_id)
         elif args.op == "inbox-read":
             msgs = op_inbox_read(
-                role=args.role, unacked_only=args.unacked_only,
+                role=args.role, unacked=args.unacked,
                 since=args.since, proposal=args.proposal,
             )
             print(json.dumps(msgs, indent=2))
@@ -1047,14 +1058,14 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(props, indent=2))
         elif args.op == "proposal-edit-body":
             body = sys.stdin.read()
-            print(op_proposal_edit_body(id=args.id, actor=args.actor, body=body))
+            print(op_proposal_edit_body(id=args.id, by=args.by, body=body))
         elif args.op == "proposal-set-status":
             paths = (
                 [p.strip() for p in args.delegated_paths.split(",") if p.strip()]
                 if args.delegated_paths else None
             )
             print(op_proposal_set_status(
-                id=args.id, new_status=args.new_status, actor=args.actor,
+                id=args.id, new_status=args.new_status, by=args.by,
                 reason=args.reason, executor=args.executor,
                 delegated_to=args.delegated_to, delegated_paths=paths,
             ))

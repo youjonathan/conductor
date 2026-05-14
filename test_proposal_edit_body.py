@@ -55,7 +55,7 @@ def test_edit_body_at_drafting_bumps_version(tmp_path, monkeypatch):
         title="t", kind="refactor", executor="builder",
         effort="S", risk="S", risk_note=".", body=SAMPLE_BODY,
     )
-    op_proposal_edit_body(id=pid, actor="planner", body=NEW_BODY)
+    op_proposal_edit_body(id=pid, by="planner", body=NEW_BODY)
     p = op_proposal_read(id=pid, status=None)[0]
     assert p["version"] == 2
     assert "NEW summary." in p["summary"]
@@ -70,9 +70,9 @@ def test_edit_body_at_awaiting_rejected(tmp_path, monkeypatch):
         title="t", kind="refactor", executor="builder",
         effort="S", risk="S", risk_note=".", body=SAMPLE_BODY,
     )
-    op_proposal_set_status(id=pid, new_status="awaiting-jonathan", actor="planner")
+    op_proposal_set_status(id=pid, new_status="awaiting-jonathan", by="planner")
     try:
-        op_proposal_edit_body(id=pid, actor="planner", body=NEW_BODY)
+        op_proposal_edit_body(id=pid, by="planner", body=NEW_BODY)
     except Exception as exc:
         assert "🟡" in str(exc) or "awaiting" in str(exc).lower()
     else:
@@ -86,10 +86,10 @@ def test_edit_body_at_approved_rejected(tmp_path, monkeypatch):
         title="t", kind="refactor", executor="builder",
         effort="S", risk="S", risk_note=".", body=SAMPLE_BODY,
     )
-    op_proposal_set_status(id=pid, new_status="awaiting-jonathan", actor="planner")
-    op_proposal_set_status(id=pid, new_status="approved", actor="human")
+    op_proposal_set_status(id=pid, new_status="awaiting-jonathan", by="planner")
+    op_proposal_set_status(id=pid, new_status="approved", by="human")
     try:
-        op_proposal_edit_body(id=pid, actor="planner", body=NEW_BODY)
+        op_proposal_edit_body(id=pid, by="planner", body=NEW_BODY)
     except Exception as exc:
         assert "approved" in str(exc).lower()
     else:

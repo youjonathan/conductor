@@ -22,7 +22,7 @@ def test_inbox_append_assigns_next_id(tmp_path, monkeypatch):
     new_id = op_inbox_append(
         from_="planner", to="builder", kind="scan-result",
         body="Found 3 items.",
-        proposal=None, re=None, verdict=None, for_version=None,
+        proposal=None, in_reply_to=None, verdict=None, for_version=None,
     )
     assert new_id == "M-0002"
     msgs = parse_inbox(inbox.read_text())
@@ -38,7 +38,7 @@ def test_inbox_append_review_requires_verdict_when_proposal_set(tmp_path, monkey
         op_inbox_append(
             from_="builder", to="planner", kind="review",
             body="x", proposal="P-001",
-            re=None, verdict=None, for_version=None,
+            in_reply_to=None, verdict=None, for_version=None,
         )
     except ValueError as exc:
         assert "verdict" in str(exc).lower()
@@ -52,7 +52,7 @@ def test_inbox_append_monotonic_under_load(tmp_path, monkeypatch):
     ids = [
         op_inbox_append(
             from_="planner", to="builder", kind="note", body=f"n{i}",
-            proposal=None, re=None, verdict=None, for_version=None,
+            proposal=None, in_reply_to=None, verdict=None, for_version=None,
         )
         for i in range(5)
     ]
