@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-The v1 file-backed adapter for Conductor — the operation surface defined in
-Conductor Design §8.1, exposed as a single-file Python CLI (`conductor.py`).
-Both the Planner and Builder Claude Code sessions invoke it via Bash. In v2,
+The v1 file-backed adapter for Conductor — a single-file Python CLI
+(`conductor.py`) that exposes the operation surface used by the Planner
+and Builder Claude Code sessions. Both sessions invoke it via Bash. In v2,
 the same op surface will be re-exposed as an MCP server; kebab-case op names
 (`inbox-append`) map mechanically to snake_case tool names (`inbox_append`)
 with arguments and return shapes preserved 1:1 — keep that invariant in mind
@@ -95,12 +95,12 @@ body contains `"in-progress → approved"`. The cap is 2; the 3rd triggers
 ### Path validation
 
 Approving a proposal with `delegated_paths` validates each path against the
-prefixes `Projects/`, `Concepts/`, `Papers/`, `Personal/` (§5.1). Anything
+prefixes `Projects/`, `Concepts/`, `Papers/`, `Personal/`. Anything
 else raises `ValueError`. This is enforced adapter-side, not by the FSM.
 
 ## v1 → v2 invariants
 
 When editing op signatures, return shapes, or status/role/kind vocabulary,
 remember v2 will re-export the same surface as MCP tools. Don't drift the
-shapes without also updating the design doc. The Codex handoff template
-(Design §7.2) is downstream and **not** part of this invariant.
+shapes casually — they're the v2 invariant. The Codex handoff template
+is downstream of this adapter and **not** part of the invariant.

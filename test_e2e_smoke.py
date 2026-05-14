@@ -1,7 +1,8 @@
 """End-to-end smoke test: one full proposal lifecycle through adapter ops.
 
 Simulates what a Planner + Builder + human + Codex would do, calling
-adapter ops in order. Asserts the final state is what §6.1 (Cycle A) describes.
+adapter ops in order. Asserts the final state matches a successful
+🔵 → 🟡 → 🟢 → ⚙️ → ✅ cycle.
 """
 from pathlib import Path
 
@@ -75,7 +76,7 @@ def test_full_cycle_code_refactor(tmp_path, monkeypatch):
     op_proposal_set_status(id=pid, new_status="in-progress", by="builder")
     handoff_id = op_inbox_append(
         from_="builder", to="codex", kind="note",
-        body="[Codex handoff doc per §7.2]",
+        body="[Codex handoff doc]",
         proposal=pid, in_reply_to=None, verdict=None, for_version=None,
     )
 

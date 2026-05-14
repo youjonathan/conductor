@@ -1,6 +1,5 @@
-"""Conductor v1 adapter — single-file CLI.
-
-See Conductor Design §8.1 for the operation surface.
+"""Conductor v1 adapter — single-file CLI exposing the operation surface
+used by the Planner and Builder Claude Code sessions.
 """
 from __future__ import annotations
 
@@ -183,7 +182,7 @@ def parse_inbox(text: str) -> list[Message]:
 
 
 def format_message(msg: Message) -> str:
-    """Render a Message as the §4.3 markdown form."""
+    """Render a Message as its on-disk markdown form."""
     ts = msg.ts.strftime("%Y-%m-%dT%H:%M:%SZ")
     header = (
         f"## {msg.id} [from: {msg.from_.value} → {msg.to.value}] {ts}"
@@ -321,7 +320,7 @@ def parse_proposals(text: str) -> list[Proposal]:
 
 
 def format_proposal(prop: Proposal) -> str:
-    """Render a Proposal per the §5.3 normative form."""
+    """Render a Proposal as its on-disk markdown form."""
     if prop.status is Status.PAUSED:
         assert prop.status_paused_from is not None
         sp = prop.status_paused_from
@@ -408,7 +407,7 @@ def proposals_lock():
 
 @contextmanager
 def supermutation():
-    """Two-lock supermutation: proposals.lock → inbox.lock, fixed order (§8.1)."""
+    """Two-lock supermutation: proposals.lock → inbox.lock, fixed order to prevent deadlock."""
     with proposals_lock():
         with inbox_lock():
             yield
@@ -745,7 +744,7 @@ def _write_proposals_text(text: str) -> None:
 
 def _serialize_proposals(props: list[Proposal]) -> str:
     """Re-emit the entire Proposals file from a list (preserves header)."""
-    header = "# Conductor Proposals\n\nFSM-controlled ledger. See [[Conductor Design]] §5.\n"
+    header = "# Conductor Proposals\n\nFSM-controlled ledger.\n"
     if not props:
         return header + "\n*No proposals yet.*\n"
     parts = [header]
@@ -836,7 +835,8 @@ def op_proposal_set_status(
             if delegated_to is not None:
                 p.delegated_to = Role(delegated_to)
                 p.delegated_paths = list(delegated_paths or [])
-                # Adapter-side path validation (§5.1)
+                # Adapter-side path validation: only vault paths under the
+                # canonical top-level dirs may be delegated.
                 bad = [
                     path for path in p.delegated_paths
                     if not path.startswith(("Projects/", "Concepts/", "Papers/", "Personal/"))
@@ -957,7 +957,7 @@ def op_state() -> dict:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
-        description="Conductor v1 adapter — see Conductor Design §8.1.",
+        description="Conductor v1 adapter — file-backed message bus + proposal ledger.",
     )
     subs = parser.add_subparsers(dest="op", required=False)
 

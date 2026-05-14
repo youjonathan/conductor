@@ -101,7 +101,7 @@ step "6. Builder takes ⚙️ in-progress and hands off to Codex"
 cmd "$PY proposal-set-status --id $PID --new-status in-progress --by builder"
 $PY proposal-set-status --id "$PID" --new-status in-progress --by builder
 HANDOFF_ID=$($PY inbox-append --from builder --to codex --kind note --proposal "$PID" \
-  <<<"[Codex handoff doc per §7.2]")
+  <<<"[Codex handoff doc]")
 note "→ handoff $HANDOFF_ID"
 
 # ── T+34 — Codex returns

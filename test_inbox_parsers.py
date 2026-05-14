@@ -9,7 +9,7 @@ from conductor import (
 
 SAMPLE = """# Conductor Inbox
 
-Append-only message log. See [[Conductor Design]] §4.
+Append-only message log.
 
 ## M-0001 [from: human → both] 2026-05-14T12:00:00Z
 [kind: note]
@@ -88,7 +88,7 @@ def test_format_message_tag_order():
     )
     rendered = format_message(msg)
     tag_line = rendered.splitlines()[1]
-    # tags must appear in fixed order per §4.3: kind, verdict, for_version, re, proposal
+    # tags must appear in fixed order: kind, verdict, for_version, re, proposal
     assert tag_line.index("kind:") < tag_line.index("verdict:")
     assert tag_line.index("verdict:") < tag_line.index("for_version:")
     assert tag_line.index("for_version:") < tag_line.index("re:")
