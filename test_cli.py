@@ -56,6 +56,42 @@ def test_cli_state_returns_json(tmp_path):
     assert "unacked" in payload
 
 
+def test_cli_inbox_ack_accepts_id_and_role_aliases(tmp_path):
+    """`inbox-ack` should accept `--id`/`--role` as aliases for
+    `--message-id`/`--by`. Both Planner and Builder tripped on the long
+    names in cycle 1 (2026-05-14) — the aliases match the natural
+    shorthand without forcing a v2 breaking-change later."""
+    _seed_cli(tmp_path)
+    r = _run(
+        ["inbox-append", "--from", "planner", "--to", "builder", "--kind", "note"],
+        cwd=tmp_path, stdin="hi",
+    )
+    assert r.returncode == 0, r.stderr
+    msg_id = r.stdout.strip()
+
+    r = _run(["inbox-ack", "--id", msg_id, "--role", "builder"], cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "M-0002"
+
+
+def test_cli_inbox_ack_long_names_still_work(tmp_path):
+    """The aliases are additive — `--message-id` and `--by` continue to work,
+    so the role prompts and any scripted callers don't break."""
+    _seed_cli(tmp_path)
+    r = _run(
+        ["inbox-append", "--from", "planner", "--to", "builder", "--kind", "note"],
+        cwd=tmp_path, stdin="hi",
+    )
+    msg_id = r.stdout.strip()
+
+    r = _run(
+        ["inbox-ack", "--message-id", msg_id, "--by", "builder"],
+        cwd=tmp_path,
+    )
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "M-0002"
+
+
 def test_cli_proposal_create_then_read(tmp_path):
     _seed_cli(tmp_path)
     body = (

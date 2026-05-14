@@ -494,7 +494,13 @@ def op_inbox_read(
             m.re for m in msgs
             if m.kind is Kind.ACK and m.from_ == role_enum and m.re
         }
-        filtered = [m for m in filtered if m.id not in acked_ids]
+        # Self-filter: don't surface role X's own messages as awaiting X's ack
+        # (the `proposal-set-status` supermutation posts audit notes addressed
+        # to `both`; those shouldn't show up in the originator's unacked queue).
+        filtered = [
+            m for m in filtered
+            if m.from_ != role_enum and m.id not in acked_ids
+        ]
 
     return [
         {
@@ -914,9 +920,14 @@ def op_state() -> dict:
     for role_name in unacked:
         role_enum = Role(role_name)
         acked = {m.re for m in msgs if m.kind is Kind.ACK and m.from_ == role_enum and m.re}
+        # Self-filter: a role's own messages (e.g. `planner → both` audit notes
+        # from supermutations) don't count toward that role's unacked queue.
         unacked[role_name] = sum(
             1 for m in msgs
-            if m.to in (role_enum, Role.BOTH) and m.kind is not Kind.ACK and m.id not in acked
+            if m.to in (role_enum, Role.BOTH)
+            and m.kind is not Kind.ACK
+            and m.from_ != role_enum
+            and m.id not in acked
         )
 
     last_activity = msgs[-1].ts.strftime("%Y-%m-%dT%H:%M:%SZ") if msgs else None
@@ -957,9 +968,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--proposal", default=None)
 
     # inbox-ack
+    # Both `--message-id`/`--by` (canonical) and `--id`/`--role` (shorthand)
+    # accepted — both Planner and Builder reached for the short forms in
+    # cycle 1 (2026-05-14). Aliases are additive: existing callers unchanged.
     sp = subs.add_parser("inbox-ack")
-    sp.add_argument("--message-id", dest="message_id", required=True)
-    sp.add_argument("--by", required=True)
+    sp.add_argument("--message-id", "--id", dest="message_id", required=True)
+    sp.add_argument("--by", "--role", dest="by", required=True)
 
     # proposal-create
     sp = subs.add_parser("proposal-create")
