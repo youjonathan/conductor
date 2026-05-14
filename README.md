@@ -69,6 +69,19 @@ and Proposals files. Pass `KEEP=1` to keep the temp dir around:
 KEEP=1 ./scripts/demo.sh
 ```
 
+## Role prompts
+
+The two Claude Code sessions need system-prompt contracts that define their
+roles, permissions, FSM authority, and verbs. Those live in
+[`prompts/`](./prompts/):
+
+- [`prompts/planner.md`](./prompts/planner.md) — the Planner over a knowledge base
+- [`prompts/builder.md`](./prompts/builder.md) — the Builder over a code repo
+- [`prompts/README.md`](./prompts/README.md) — setup, env vars, invocation patterns
+
+Drop them into your Claude Code sessions as system prompts (or wrap as a
+custom skill) and you have a working pair.
+
 ## Invocation
 
 ```bash
