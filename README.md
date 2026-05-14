@@ -1,52 +1,133 @@
-# Conductor adapter
+# Conductor
 
-This is the v1 file-backed implementation of the Conductor adapter. It exposes
-the operation surface defined in [Conductor Design §8.1](../Conductor%20Design.md)
-as a CLI; both the Planner and Builder Claude Code sessions invoke it via Bash.
+**Two Claude Code sessions collaborate on a codebase via a file-backed
+message bus and an FSM-governed proposal ledger.** One session ("Planner")
+scans for work and drafts proposals; another ("Builder") reviews and
+executes them; a human approves the gate between drafting and execution.
+This repo is the v1 adapter — a single-file Python CLI both sessions invoke
+to read and mutate the shared state.
+
+```
+                     ┌──────────────────────────────┐
+                     │   .conductor/                │
+   ┌──────────┐      │   ├── inbox.lock             │      ┌──────────┐
+   │ Planner  │◄────►│   ├── proposals.lock         │◄────►│ Builder  │
+   │ (Claude) │      │   ├── Conductor Inbox.md     │      │ (Claude) │
+   └──────────┘      │   └── Conductor Proposals.md │      └──────────┘
+                     └──────────────────────────────┘
+                                   ▲
+                                   │  approves / rejects
+                              ┌─────────┐
+                              │  Human  │
+                              └─────────┘
+```
+
+A proposal's life is a finite-state machine:
+
+```
+   🔵 drafting  ──►  🟡 awaiting-jonathan  ──►  🟢 approved  ──►  ⚙️ in-progress  ──►  ✅ done
+                                                                      ├── retry → 🟢
+                                                                      └── escalate → 🟡
+                              (any non-terminal state)  ──►  ⏸️ paused  ──►  (resume to prior)
+                              (any non-terminal state)  ──►  ❌ rejected
+```
+
+Each transition is gated by which actor is allowed to make it (`planner`,
+`builder`, `human`, or `codex`); the adapter enforces the table.
+
+## Quickstart
+
+```bash
+git clone <this-repo> && cd hartford
+pytest -v              # 12 test files, full coverage of the op surface
+./scripts/demo.sh      # run one full proposal lifecycle through the CLI
+```
+
+The demo script seeds a temp `CONDUCTOR_DIR`, runs the cycle
+`🔵 → 🟡 → 🟢 → ⚙️ → ✅` through the CLI, and prints the resulting Inbox
+and Proposals files. Pass `KEEP=1` to keep the temp dir around:
+
+```bash
+KEEP=1 ./scripts/demo.sh
+```
 
 ## Invocation
 
 ```bash
-export CONDUCTOR_DIR="/path/to/Conductor"
+export CONDUCTOR_DIR="/path/to/vault"   # contains the two .md files + .conductor/
 python3 conductor.py <op> [--args...] [< body-on-stdin]
+python3 conductor.py <op> --help        # per-op arguments
 ```
 
-Operations:
+`CONDUCTOR_DIR` must contain:
+
+```
+$CONDUCTOR_DIR/
+├── Conductor Inbox.md         # append-only message log
+├── Conductor Proposals.md     # FSM-controlled ledger
+└── .conductor/
+    ├── inbox.lock             # flock target
+    └── proposals.lock         # flock target
+```
+
+## Operations
 
 | Op | Purpose |
 |---|---|
 | `inbox-append`        | Append a message to the bus. |
 | `inbox-read`          | Read messages (filter by role/unacked/since/proposal). |
 | `inbox-ack`           | Idempotently ack a message by id. |
-| `proposal-create`     | Create a proposal (body via stdin, sections per §8.1). |
+| `proposal-create`     | Create a proposal (body via stdin; requires Summary / Motivation / Scope / Acceptance / Evidence sections). |
 | `proposal-read`       | Read proposals (filter by id/status). |
-| `proposal-edit-body`  | Edit a 🔵 drafting proposal's body; bumps `version`. |
-| `proposal-set-status` | FSM-validated status transition; atomic with ack emit. |
-| `state`               | Compact JSON summary of bus state. |
+| `proposal-edit-body`  | Edit a `🔵 drafting` proposal's body; bumps `version`. |
+| `proposal-set-status` | FSM-validated status transition; atomic with an audit-note emit to the inbox. |
+| `state`               | Compact JSON summary of bus state for session boot. |
 
-See `python3 conductor.py <op> --help` for each op's arguments.
+Writes return the new message id or `ok`; reads return JSON.
 
-## Locking
+## Concurrency
 
-All write ops acquire `flock` on `.conductor/inbox.lock` or `.conductor/proposals.lock`.
-Cross-file mutations (status transitions, body edits) acquire both in order:
-`proposals.lock` → `inbox.lock`. The fixed order prevents deadlock.
+Two `flock`-based mutexes guard the on-disk files:
+
+- Single-file writes acquire just `inbox.lock` or `proposals.lock`.
+- Cross-file writes (status transitions, body edits) acquire **both**, in
+  the fixed order `proposals.lock → inbox.lock`, to prevent deadlock.
+- `proposal-set-status` is atomic: the Proposals file (rewritten via
+  temp-file + rename) and the audit note appended to the Inbox both
+  succeed or neither does.
+- `inbox-ack` is idempotent — re-acking the same message from the same
+  actor returns the existing ack id without writing.
+
+## Architecture
+
+`conductor.py` is intentionally one file with four layers:
+
+1. **Domain types** — `Role`, `Kind`, `Verdict`, `Status` enums and the
+   `Message` / `Proposal` dataclasses.
+2. **Parsers / formatters** — the only code that touches the on-disk
+   markdown grammar. Round-trip stable (`parse → format → parse`).
+3. **Locking** — `inbox_lock()`, `proposals_lock()`, `supermutation()`.
+4. **Operations** — `op_*` functions, each wired to an argparse subcommand
+   in `build_parser()` and dispatched in `main()`.
+
+See [`CLAUDE.md`](./CLAUDE.md) for a deeper walk-through aimed at agents
+extending the adapter.
+
+## v1 → v2
+
+In v2, this CLI is replaced by an MCP server that exposes the same
+operations as tools. The name mapping is mechanical: every kebab-case op
+(`inbox-append`) becomes a snake_case tool (`inbox_append`); arguments and
+return shapes are preserved 1:1. Role prompts do not change between v1
+and v2.
 
 ## Tests
 
 ```bash
-cd .conductor
-pytest -v
+pytest -v                                    # all
+pytest -v test_fsm.py                        # one file
+pytest -v test_e2e_smoke.py::test_full_cycle_code_refactor   # one test
 ```
 
-## v1 → v2 swap
-
-In v2, this CLI is replaced by an MCP server that exposes the same operations
-as tools. Per Conductor Design §12, the name translation is mechanical: every
-kebab-case op name (`inbox-append`) maps to a snake_case MCP tool name
-(`inbox_append`), with arguments and return shapes preserved 1:1. Role
-prompts do not change between v1 and v2.
-
-The Codex handoff template (Design §7.2) is downstream of Conductor and not
-part of the v1→v2 invariant — it reflects the local filesystem, git/GitHub,
-and the `codex:rescue` skill's contract.
+The e2e smoke test (`test_e2e_smoke.py`) is the canonical
+end-to-end exercise; `scripts/demo.sh` is its CLI-level twin.
