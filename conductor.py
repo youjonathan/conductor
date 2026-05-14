@@ -623,6 +623,43 @@ def op_proposal_create(
         return new_id
 
 
+def op_proposal_read(*, id: str | None, status: str | None) -> list[dict]:
+    with proposals_lock():
+        props = parse_proposals(_read_proposals_text())
+
+    def _matches(p: Proposal) -> bool:
+        if id is not None and p.id != id:
+            return False
+        if status is not None and p.status.slug != status and p.status.emoji != status:
+            return False
+        return True
+
+    return [
+        {
+            "id": p.id,
+            "title": p.title,
+            "kind": p.kind,
+            "version": p.version,
+            "executor": p.executor.value,
+            "delegated_to": p.delegated_to.value if p.delegated_to else None,
+            "delegated_paths": list(p.delegated_paths),
+            "status": p.status.slug,
+            "status_paused_from": p.status_paused_from.slug if p.status_paused_from else None,
+            "retry_count": p.retry_count,
+            "effort": p.effort,
+            "risk": p.risk,
+            "risk_note": p.risk_note,
+            "summary": p.summary,
+            "motivation": p.motivation,
+            "scope": list(p.scope),
+            "acceptance": list(p.acceptance),
+            "evidence": list(p.evidence),
+            "linked_messages": list(p.linked_messages),
+        }
+        for p in props if _matches(p)
+    ]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
