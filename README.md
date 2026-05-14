@@ -1,5 +1,9 @@
 # Conductor
 
+*How many Claude Code terminals do you have open right now? How often are
+you pasting output from one into another? For me, too often, so I built
+them a bus.*
+
 **Two Claude Code sessions collaborate on a codebase via a file-backed
 message bus and an FSM-governed proposal ledger.** One session ("Planner")
 scans for work and drafts proposals; another ("Builder") reviews and
