@@ -43,7 +43,7 @@ def test_state_counts(tmp_path, monkeypatch):
                             effort="S", risk="S", risk_note=".", body=SAMPLE_BODY)
     op_proposal_create(title="b", kind="drift", executor="planner",
                        effort="S", risk="S", risk_note=".", body=SAMPLE_BODY)
-    op_proposal_set_status(id=p1, new_status="awaiting-jonathan", actor="planner")
+    op_proposal_set_status(id=p1, new_status="awaiting-jonathan", by="planner")
     s = op_state()
     assert s["status_counts"].get("drafting") == 1
     assert s["status_counts"].get("awaiting-jonathan") == 1
@@ -57,10 +57,10 @@ def test_state_unacked_excludes_self_posted_to_both(tmp_path, monkeypatch):
     monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
     # A real cross-role message — should count.
     op_inbox_append(from_="builder", to="planner", kind="note", body="hi",
-                    proposal=None, re=None, verdict=None, for_version=None)
+                    proposal=None, in_reply_to=None, verdict=None, for_version=None)
     # Planner-posted audit message to both — should NOT count toward planner.
     op_inbox_append(from_="planner", to="both", kind="note", body="audit",
-                    proposal=None, re=None, verdict=None, for_version=None)
+                    proposal=None, in_reply_to=None, verdict=None, for_version=None)
     s = op_state()
     assert s["unacked"]["planner"] == 1, s["unacked"]
     # Builder is the recipient of the audit (to=both includes builder) and

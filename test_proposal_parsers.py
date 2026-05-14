@@ -51,7 +51,7 @@ def test_parse_proposal_fields():
     assert p.id == "P-007"
     assert p.title == "Remove dead `RetrieverV1` import shim"
     assert p.status is Status.AWAITING_JONATHAN
-    assert p.kind == "refactor"
+    assert p.kind.value == "refactor"
     assert p.version == 1
     assert p.executor is Role.BUILDER
     assert p.effort == "S"

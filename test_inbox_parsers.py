@@ -51,7 +51,7 @@ def test_parse_inbox_third_message_review_fields():
     assert m3.kind is Kind.REVIEW
     assert m3.verdict is Verdict.APPROVED_FOR_HUMAN
     assert m3.for_version == 1
-    assert m3.re == "M-0002"
+    assert m3.in_reply_to == "M-0002"
     assert m3.proposal == "P-001"
 
 
@@ -68,7 +68,7 @@ def test_format_message_roundtrip():
         assert rt.kind == m.kind
         assert rt.verdict == m.verdict
         assert rt.for_version == m.for_version
-        assert rt.re == m.re
+        assert rt.in_reply_to == m.in_reply_to
         assert rt.proposal == m.proposal
         assert rt.body.strip() == m.body.strip()
 
@@ -82,7 +82,7 @@ def test_format_message_tag_order():
         kind=Kind.REVIEW,
         verdict=Verdict.NEEDS_CHANGE,
         for_version=1,
-        re="M-0041",
+        in_reply_to="M-0041",
         proposal="P-007",
         body="...",
     )

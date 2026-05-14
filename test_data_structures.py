@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from conductor import (
-    Kind, Role, Status, Verdict,
+    Kind, Role, Status, Verdict, ProposalKind,
     Message, Proposal,
     StatusError,
 )
@@ -85,7 +85,7 @@ def test_proposal_dataclass_defaults():
     prop = Proposal(
         id="P-001",
         title="Sample",
-        kind="refactor",
+        kind=ProposalKind.REFACTOR,
         version=1,
         executor=Role.BUILDER,
         status=Status.DRAFTING,
