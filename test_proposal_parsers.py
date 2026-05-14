@@ -7,7 +7,7 @@ from conductor import (
 
 SAMPLE = """# Conductor Proposals
 
-FSM-controlled ledger. See [[Conductor Design]] §5.
+FSM-controlled ledger.
 
 ## P-007 — Remove dead `RetrieverV1` import shim
 - **Status:** 🟡 awaiting-jonathan

@@ -134,3 +134,17 @@ pytest -v test_e2e_smoke.py::test_full_cycle_code_refactor   # one test
 
 The e2e smoke test (`test_e2e_smoke.py`) is the canonical
 end-to-end exercise; `scripts/demo.sh` is its CLI-level twin.
+
+## Origins
+
+Conductor started inside my personal Obsidian vault. A Planner Claude
+Code session runs *in* the vault (where my notes, papers, and project
+plans live); a Builder session runs in a code repo. A design doc
+(`Conductor Design.md`, kept private) defines the protocol between
+them. The four canonical `delegated_paths` prefixes
+(`Projects/`, `Concepts/`, `Papers/`, `Personal/`) come from the
+vault's top-level structure — that's why they're hardcoded.
+
+The protocol generalizes: `CONDUCTOR_DIR` can be any directory you
+want the two sessions to share. The vault is just where the
+conventions came from.
