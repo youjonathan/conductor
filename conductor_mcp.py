@@ -13,7 +13,7 @@ from typing import NoReturn
 
 from fastmcp import FastMCP
 
-from conductor import op_state
+from conductor import op_state, op_inbox_read, op_inbox_ack
 
 mcp = FastMCP("conductor")
 
@@ -28,6 +28,26 @@ def _fail(msg: str) -> NoReturn:
 def state() -> dict:
     """Compact JSON summary of bus state for session boot."""
     return op_state()
+
+
+@mcp.tool
+def inbox_read(
+    role: str | None = None,
+    unacked: bool = False,
+    since: str | None = None,
+    proposal: str | None = None,
+) -> list[dict]:
+    """Read inbox messages. Filters: role (`to` matches role or `both`),
+    unacked (excludes messages already acked by `role`, and self-posted ones),
+    since (id > since), proposal."""
+    return op_inbox_read(role=role, unacked=unacked, since=since, proposal=proposal)
+
+
+@mcp.tool
+def inbox_ack(message_id: str, by: str) -> str:
+    """Idempotently acknowledge a message. Returns the ack's id, or the existing
+    ack's id if `by` has already acked `message_id`."""
+    return op_inbox_ack(message_id=message_id, by=by)
 
 
 def main() -> None:

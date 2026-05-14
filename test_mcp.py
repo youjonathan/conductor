@@ -57,3 +57,37 @@ def test_state_returns_dict(tmp_path, monkeypatch):
     assert "last_activity" in result
     assert "in_progress" in result
     assert "retry_counts" in result
+
+
+def test_inbox_read_returns_list(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor_mcp import inbox_read
+    result = inbox_read()
+    assert result == []  # empty bus
+
+def test_inbox_read_filters_by_role(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor import op_inbox_append
+    from conductor_mcp import inbox_read
+    op_inbox_append(
+        from_="planner", to="builder", kind="note", body="hi",
+        proposal=None, in_reply_to=None, verdict=None, for_version=None,
+    )
+    result = inbox_read(role="builder")
+    assert len(result) == 1
+    assert result[0]["to"] == "builder"
+
+def test_inbox_ack_creates_ack(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor import op_inbox_append
+    from conductor_mcp import inbox_ack
+    orig = op_inbox_append(
+        from_="planner", to="builder", kind="note", body="hi",
+        proposal=None, in_reply_to=None, verdict=None, for_version=None,
+    )
+    ack_id = inbox_ack(message_id=orig, by="builder")
+    assert ack_id.startswith("M-")
+    assert ack_id != orig
