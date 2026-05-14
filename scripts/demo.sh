@@ -19,7 +19,10 @@ else
   BOLD=""; DIM=""; CYAN=""; GREEN=""; YELLOW=""; RESET=""
 fi
 
-step() { echo; echo "${BOLD}${CYAN}» $*${RESET}"; }
+# Pacing — set PAUSE=0.6 (or similar) to slow the demo for recording.
+PAUSE="${PAUSE:-0}"
+
+step() { echo; echo "${BOLD}${CYAN}» $*${RESET}"; sleep "$PAUSE"; }
 cmd()  { echo "${DIM}\$ $*${RESET}"; }
 note() { echo "${YELLOW}  $*${RESET}"; }
 

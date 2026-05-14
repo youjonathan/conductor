@@ -42,6 +42,14 @@ A proposal's life is a finite-state machine:
 Each transition is gated by which actor is allowed to make it (`planner`,
 `builder`, `human`, or `codex`); the adapter enforces the table.
 
+## Watch one full cycle
+
+[![asciicast](https://asciinema.org/a/43RGDl67oKaAnQQr.svg)](https://asciinema.org/a/43RGDl67oKaAnQQr)
+
+`scripts/demo.sh` runs the cycle above end-to-end through the CLI — Planner
+drafts, Builder reviews, human approves, Builder executes and hands off to
+Codex, Builder closes. One proposal in `✅ done`; full audit trail on the bus.
+
 ## Quickstart
 
 ```bash
