@@ -13,6 +13,8 @@ from typing import NoReturn
 
 from fastmcp import FastMCP
 
+from conductor import op_state
+
 mcp = FastMCP("conductor")
 
 
@@ -20,6 +22,12 @@ def _fail(msg: str) -> NoReturn:
     """Write a startup error to stderr and exit with code 1."""
     print(f"conductor-mcp: {msg}", file=sys.stderr)
     raise SystemExit(1)
+
+
+@mcp.tool
+def state() -> dict:
+    """Compact JSON summary of bus state for session boot."""
+    return op_state()
 
 
 def main() -> None:

@@ -42,3 +42,18 @@ def test_main_exits_when_dot_conductor_subdir_missing(tmp_path, monkeypatch, cap
         conductor_mcp.main()
     assert exc.value.code == 1
     assert ".conductor/ subdirectory" in capsys.readouterr().err
+
+
+# --- Direct wrapper tests (one per tool) ---
+
+def test_state_returns_dict(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor_mcp import state
+    result = state()
+    assert isinstance(result, dict)
+    assert "status_counts" in result
+    assert "unacked" in result
+    assert "last_activity" in result
+    assert "in_progress" in result
+    assert "retry_counts" in result
