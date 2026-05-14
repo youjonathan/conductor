@@ -5,6 +5,7 @@ See Conductor Design §8.1 for the operation surface.
 from __future__ import annotations
 
 import argparse
+import re as _re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -115,6 +116,81 @@ OPERATIONS = [
     "proposal-set-status",
     "state",
 ]
+
+
+_HEADER_RE = _re.compile(
+    r"^##\s+(?P<id>M-\d{4})\s+"
+    r"\[from:\s*(?P<from>\w+)\s*→\s*(?P<to>\w+)\]\s+"
+    r"(?P<ts>\S+)\s*$"
+)
+
+
+def _parse_tag_line(line: str) -> dict[str, str]:
+    """Parse `[kind: review] [verdict: ...] ...` into a dict."""
+    tags: dict[str, str] = {}
+    for match in _re.finditer(r"\[(?P<k>[a-z_]+):\s*(?P<v>[^\]]+?)\s*\]", line):
+        tags[match.group("k")] = match.group("v")
+    return tags
+
+
+def parse_inbox(text: str) -> list[Message]:
+    """Parse the Inbox markdown text into a list of Messages, in file order."""
+    lines = text.splitlines()
+    messages: list[Message] = []
+    i = 0
+    while i < len(lines):
+        m = _HEADER_RE.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        if i + 1 >= len(lines):
+            break
+        tag_line = lines[i + 1]
+        tags = _parse_tag_line(tag_line)
+        # body runs until the next `## M-` header or EOF
+        body_start = i + 2
+        body_end = body_start
+        while body_end < len(lines) and not _HEADER_RE.match(lines[body_end]):
+            body_end += 1
+        body = "\n".join(lines[body_start:body_end]).strip()
+        ts = datetime.fromisoformat(m.group("ts").replace("Z", "+00:00"))
+        verdict_str = tags.get("verdict")
+        for_version_str = tags.get("for_version")
+        messages.append(
+            Message(
+                id=m.group("id"),
+                from_=Role(m.group("from")),
+                to=Role(m.group("to")),
+                ts=ts,
+                kind=Kind(tags["kind"]),
+                verdict=Verdict(verdict_str) if verdict_str else None,
+                for_version=int(for_version_str) if for_version_str else None,
+                re=tags.get("re"),
+                proposal=tags.get("proposal"),
+                body=body,
+            )
+        )
+        i = body_end
+    return messages
+
+
+def format_message(msg: Message) -> str:
+    """Render a Message as the §4.3 markdown form."""
+    ts = msg.ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+    header = (
+        f"## {msg.id} [from: {msg.from_.value} → {msg.to.value}] {ts}"
+    )
+    tags = [f"[kind: {msg.kind.value}]"]
+    if msg.verdict is not None:
+        tags.append(f"[verdict: {msg.verdict.value}]")
+    if msg.for_version is not None:
+        tags.append(f"[for_version: {msg.for_version}]")
+    if msg.re is not None:
+        tags.append(f"[re: {msg.re}]")
+    if msg.proposal is not None:
+        tags.append(f"[proposal: {msg.proposal}]")
+    tag_line = " ".join(tags)
+    return f"{header}\n{tag_line}\n\n{msg.body}\n"
 
 
 def build_parser() -> argparse.ArgumentParser:
