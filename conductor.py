@@ -193,6 +193,170 @@ def format_message(msg: Message) -> str:
     return f"{header}\n{tag_line}\n\n{msg.body}\n"
 
 
+_PROP_HEADER_RE = _re.compile(r"^##\s+(?P<id>P-\d{3,})\s+—\s+(?P<title>.+)\s*$")
+_STATUS_LINE_RE = _re.compile(
+    r"^-\s+\*\*Status:\*\*\s+(?P<emoji>\S+)\s+(?P<rest>.+?)\s*$"
+)
+_PAUSED_STATUS_RE = _re.compile(
+    r"^paused\s+\(from:\s+(?P<from_emoji>\S+)\s+(?P<from_rest>.+?)\)\s*$"
+)
+_FIELD_LINE_RE = _re.compile(r"^-\s+\*\*(?P<key>[^*]+?):\*\*\s+(?P<value>.+?)\s*$")
+_EFFORT_RISK_RE = _re.compile(
+    r"^-\s+\*\*Effort:\*\*\s+(?P<effort>[SML])\s+\|\s+\*\*Risk:\*\*\s+(?P<risk>[SML])\s*$"
+)
+
+
+def _split_proposal_blocks(text: str) -> list[list[str]]:
+    """Split the Proposals file into one list-of-lines per proposal."""
+    lines = text.splitlines()
+    blocks: list[list[str]] = []
+    current: list[str] | None = None
+    for line in lines:
+        if _PROP_HEADER_RE.match(line):
+            if current is not None:
+                blocks.append(current)
+            current = [line]
+        elif current is not None:
+            current.append(line)
+    if current is not None:
+        blocks.append(current)
+    return blocks
+
+
+def _parse_section(lines: list[str], heading: str) -> list[str]:
+    """Return the bullet/lines inside `### heading` until the next `### `."""
+    out: list[str] = []
+    in_section = False
+    for line in lines:
+        if line.strip() == f"### {heading}":
+            in_section = True
+            continue
+        if in_section and line.startswith("### "):
+            break
+        if in_section:
+            out.append(line)
+    return [ln.strip() for ln in out if ln.strip()]
+
+
+def parse_proposals(text: str) -> list[Proposal]:
+    blocks = _split_proposal_blocks(text)
+    proposals: list[Proposal] = []
+    for block in blocks:
+        hdr = _PROP_HEADER_RE.match(block[0])
+        if not hdr:
+            continue
+        # Field lines come right after the header until the first blank or `### `.
+        fields: dict[str, str] = {}
+        status: Status | None = None
+        status_paused_from: Status | None = None
+        effort = risk = ""
+        for line in block[1:]:
+            if line.startswith("### ") or not line.strip():
+                break
+            sm = _STATUS_LINE_RE.match(line)
+            if sm:
+                emoji = sm.group("emoji")
+                rest = sm.group("rest").strip()
+                pm = _PAUSED_STATUS_RE.match(rest)
+                if pm:
+                    status = Status.PAUSED
+                    status_paused_from = Status.from_emoji(pm.group("from_emoji"))
+                else:
+                    status = Status.from_emoji(emoji)
+                continue
+            em = _EFFORT_RISK_RE.match(line)
+            if em:
+                effort = em.group("effort")
+                risk = em.group("risk")
+                continue
+            fm = _FIELD_LINE_RE.match(line)
+            if fm:
+                fields[fm.group("key").strip().lower()] = fm.group("value").strip()
+        if status is None:
+            continue
+        summary_lines = _parse_section(block, "Summary")
+        motivation_lines = _parse_section(block, "Motivation")
+        scope = [ln.lstrip("- ").strip() for ln in _parse_section(block, "Scope")]
+        acceptance = [ln.lstrip("- ").strip() for ln in _parse_section(block, "Acceptance")]
+        evidence = [ln.lstrip("- ").strip() for ln in _parse_section(block, "Evidence")]
+        linked_raw = _parse_section(block, "Linked Messages")
+        linked = [m.strip() for m in ",".join(linked_raw).split(",") if m.strip()]
+        delegated_to_str = fields.get("delegated to")
+        delegated_paths_str = fields.get("delegated paths", "")
+        delegated_paths = [
+            p.strip(" `") for p in delegated_paths_str.split(",") if p.strip()
+        ]
+        proposals.append(
+            Proposal(
+                id=hdr.group("id"),
+                title=hdr.group("title").strip(),
+                kind=fields["kind"],
+                version=int(fields["version"]),
+                executor=Role(fields["executor"]),
+                status=status,
+                status_paused_from=status_paused_from,
+                retry_count=int(fields.get("retry count", "0")),
+                delegated_to=Role(delegated_to_str) if delegated_to_str else None,
+                delegated_paths=delegated_paths,
+                summary=" ".join(summary_lines),
+                motivation=" ".join(motivation_lines),
+                scope=scope,
+                acceptance=acceptance,
+                evidence=evidence,
+                effort=effort,
+                risk=risk,
+                risk_note=fields.get("risk note", ""),
+                linked_messages=linked,
+            )
+        )
+    return proposals
+
+
+def format_proposal(prop: Proposal) -> str:
+    """Render a Proposal per the §5.3 normative form."""
+    if prop.status is Status.PAUSED:
+        assert prop.status_paused_from is not None
+        sp = prop.status_paused_from
+        status_line = f"- **Status:** ⏸️ paused (from: {sp.emoji} {sp.slug})"
+    else:
+        status_line = f"- **Status:** {prop.status.emoji} {prop.status.slug}"
+    lines = [
+        f"## {prop.id} — {prop.title}",
+        status_line,
+        f"- **Kind:** {prop.kind}",
+        f"- **Version:** {prop.version}",
+        f"- **Executor:** {prop.executor.value}",
+    ]
+    if prop.delegated_to is not None:
+        lines.append(f"- **Delegated to:** {prop.delegated_to.value}")
+        paths = ", ".join(f"`{p}`" for p in prop.delegated_paths)
+        lines.append(f"- **Delegated paths:** {paths}")
+    lines += [
+        f"- **Effort:** {prop.effort} | **Risk:** {prop.risk}",
+        f"- **Risk note:** {prop.risk_note}",
+        f"- **Retry count:** {prop.retry_count}",
+        "",
+        "### Summary",
+        prop.summary,
+        "",
+        "### Motivation",
+        prop.motivation,
+        "",
+        "### Scope",
+        *(f"- {s}" for s in prop.scope),
+        "",
+        "### Acceptance",
+        *(f"- {a}" for a in prop.acceptance),
+        "",
+        "### Evidence",
+        *(f"- {e}" for e in prop.evidence),
+        "",
+        "### Linked Messages",
+        ", ".join(prop.linked_messages) if prop.linked_messages else "",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
