@@ -713,6 +713,146 @@ def validate_transition(
         )
 
 
+def _resolve_status(name: str) -> Status:
+    """Accept either a status slug ('approved') or emoji ('🟢') and return the Status enum."""
+    for s in Status:
+        if name == s.slug or name == s.emoji:
+            return s
+    raise StatusError(f"unknown status: {name!r}")
+
+
+def _write_proposals_text(text: str) -> None:
+    """Atomically replace the Proposals file with `text` (temp-file + rename)."""
+    target = _proposals_path()
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(text)
+    _os.rename(str(tmp), str(target))
+
+
+def _serialize_proposals(props: list[Proposal]) -> str:
+    """Re-emit the entire Proposals file from a list (preserves header)."""
+    header = "# Conductor Proposals\n\nFSM-controlled ledger. See [[Conductor Design]] §5.\n"
+    if not props:
+        return header + "\n*No proposals yet.*\n"
+    parts = [header]
+    for p in props:
+        parts.append("\n" + format_proposal(p))
+    return "".join(parts)
+
+
+def op_proposal_set_status(
+    *,
+    id: str,
+    new_status: str,
+    actor: str,
+    reason: str | None = None,
+    executor: str | None = None,
+    delegated_to: str | None = None,
+    delegated_paths: list[str] | None = None,
+) -> str:
+    """Set a proposal's status. Atomically writes both Proposals and an ack to Inbox
+    under a two-lock supermutation. Returns 'noop' on same-state writes, else 'ok'."""
+    target_status = _resolve_status(new_status)
+    actor_role = Role(actor)
+    with supermutation():
+        props = parse_proposals(_read_proposals_text())
+        for idx, p in enumerate(props):
+            if p.id == id:
+                break
+        else:
+            raise ValueError(f"proposal {id} not found")
+        from_status = p.status
+
+        # Idempotency
+        if from_status is target_status:
+            return "noop"
+
+        # Resume handling
+        if from_status is Status.PAUSED:
+            if target_status is not p.status_paused_from:
+                raise FSMError(
+                    f"⏸️ can only resume to {p.status_paused_from.slug if p.status_paused_from else '?'} "
+                    f"— refusing to resume to {target_status.slug}"
+                )
+            resume_from = p.status_paused_from
+            if resume_from is None:
+                raise FSMError("paused proposal has no status_paused_from recorded")
+            # The "actor" for resume is anyone allowed at the from_status's outbound set.
+            # Simplest: allow planner/builder/human (any of the three).
+            if actor_role not in {Role.PLANNER, Role.BUILDER, Role.HUMAN}:
+                raise FSMError(f"actor {actor_role.value} cannot resume")
+            p.status = resume_from
+            p.status_paused_from = None
+        else:
+            # Pause → check pausable
+            if target_status is Status.PAUSED:
+                validate_transition(from_status, target_status, actor_role)
+                p.status_paused_from = from_status
+                p.status = Status.PAUSED
+            else:
+                # Standard transition
+                validate_transition(from_status, target_status, actor_role)
+
+                # Retry cap: 🟢 → ⚙️ resets per-execution counter to 0 (fresh attempt);
+                # ⚙️ → 🟢 increments per-execution counter AND checks cumulative inbox cap.
+                # Cap: the proposal may have at most 2 prior "in-progress → approved"
+                # transitions recorded in the inbox before a third is rejected.
+                if from_status is Status.IN_PROGRESS and target_status is Status.APPROVED:
+                    # Count cumulative retries via inbox ack notes for this proposal.
+                    prior_retries = sum(
+                        1 for m in parse_inbox(_read_inbox_text())
+                        if m.proposal == id
+                        and m.kind is Kind.NOTE
+                        and "in-progress → approved" in m.body
+                    )
+                    if prior_retries >= 2:
+                        raise FSMError(
+                            f"retry cap reached ({prior_retries} retries recorded); "
+                            f"escalate via ⚙️ → 🟡 instead"
+                        )
+                    p.retry_count += 1
+                elif from_status is Status.APPROVED and target_status is Status.IN_PROGRESS:
+                    p.retry_count = 0
+                p.status = target_status
+
+        # Atomic approval optional fields
+        if target_status is Status.APPROVED and from_status is Status.AWAITING_JONATHAN:
+            if executor is not None:
+                p.executor = Role(executor)
+            if delegated_to is not None:
+                p.delegated_to = Role(delegated_to)
+                p.delegated_paths = list(delegated_paths or [])
+                # Adapter-side path validation (§5.1)
+                bad = [
+                    path for path in p.delegated_paths
+                    if not path.startswith(("Projects/", "Concepts/", "Papers/", "Personal/"))
+                ]
+                if bad:
+                    raise ValueError(f"delegated_paths contain disallowed prefixes: {bad}")
+
+        # Write proposals atomically
+        props[idx] = p
+        _write_proposals_text(_serialize_proposals(props))
+
+        # Emit ack to Inbox under the same supermutation
+        text = _read_inbox_text()
+        new_id = _next_message_id(text)
+        rsn = f"  (reason: {reason})" if reason else ""
+        ack = Message(
+            id=new_id,
+            from_=actor_role,
+            to=Role.BOTH,
+            ts=_now_utc(),
+            kind=Kind.NOTE,
+            proposal=id,
+            body=f"status: {from_status.slug} → {p.status.slug} by {actor}{rsn}",
+        )
+        with open(_inbox_path(), "a") as fh:
+            fh.write(format_message(ack))
+
+    return "ok"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
