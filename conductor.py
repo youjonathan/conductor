@@ -462,6 +462,56 @@ def op_inbox_append(
         return new_id
 
 
+def op_inbox_read(
+    *,
+    role: str | None,
+    unacked_only: bool,
+    since: str | None,
+    proposal: str | None,
+) -> list[dict]:
+    """Return messages as a list of dicts. Filters apply in order:
+    role (`to` matches, or `to=both`), since (id > since), proposal."""
+    with inbox_lock():
+        msgs = parse_inbox(_read_inbox_text())
+
+    role_enum = Role(role) if role else None
+
+    def _matches(m: Message) -> bool:
+        if role_enum is not None and m.to != role_enum and m.to != Role.BOTH:
+            return False
+        if since is not None and m.id <= since:
+            return False
+        if proposal is not None and m.proposal != proposal:
+            return False
+        return True
+
+    filtered = [m for m in msgs if _matches(m)]
+
+    if unacked_only and role_enum is not None:
+        # An ack: kind=ack, from=role, re=<original id>
+        acked_ids = {
+            m.re for m in msgs
+            if m.kind is Kind.ACK and m.from_ == role_enum and m.re
+        }
+        filtered = [m for m in filtered if m.id not in acked_ids]
+
+    return [
+        {
+            "id": m.id,
+            "from": m.from_.value,
+            "to": m.to.value,
+            "ts": m.ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "kind": m.kind.value,
+            "verdict": m.verdict.value if m.verdict else None,
+            "for_version": m.for_version,
+            "re": m.re,
+            "proposal": m.proposal,
+            "body": m.body,
+        }
+        for m in filtered
+    ]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
