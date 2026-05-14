@@ -548,6 +548,81 @@ def op_inbox_ack(*, message_id: str, by: str) -> str:
         return new_id
 
 
+REQUIRED_PROPOSAL_SECTIONS = ("Summary", "Motivation", "Scope", "Acceptance", "Evidence")
+
+
+def _parse_proposal_body(body: str) -> dict[str, object]:
+    """Extract Summary/Motivation/Scope/Acceptance/Evidence from `### ...` sections."""
+    text = "# Conductor Proposals\n\n## P-XXX — placeholder\n- **Status:** 🔵 drafting\n" \
+           "- **Kind:** feature\n- **Version:** 1\n- **Executor:** builder\n" \
+           "- **Effort:** S | **Risk:** S\n- **Risk note:** _\n- **Retry count:** 0\n\n" \
+           + body
+    fake_lines = text.splitlines()
+    sections = {
+        name: _parse_section(fake_lines, name) for name in REQUIRED_PROPOSAL_SECTIONS
+    }
+    missing = [n for n in REQUIRED_PROPOSAL_SECTIONS if not sections[n]]
+    if missing:
+        raise ValueError(f"missing required section(s) in body: {missing}")
+    return {
+        "summary": " ".join(sections["Summary"]),
+        "motivation": " ".join(sections["Motivation"]),
+        "scope": [ln.lstrip("- ").strip() for ln in sections["Scope"]],
+        "acceptance": [ln.lstrip("- ").strip() for ln in sections["Acceptance"]],
+        "evidence": [ln.lstrip("- ").strip() for ln in sections["Evidence"]],
+    }
+
+
+def _read_proposals_text() -> str:
+    p = _proposals_path()
+    return p.read_text() if p.exists() else "# Conductor Proposals\n"
+
+
+def _next_proposal_id(text: str) -> str:
+    props = parse_proposals(text)
+    n = max((int(p.id.split("-")[1]) for p in props), default=0) + 1
+    return f"P-{n:03d}"
+
+
+def op_proposal_create(
+    *,
+    title: str,
+    kind: str,
+    executor: str,
+    effort: str,
+    risk: str,
+    risk_note: str,
+    body: str,
+) -> str:
+    """Create a new proposal at version=1, status=🔵 drafting, retry_count=0."""
+    parsed = _parse_proposal_body(body)
+    with proposals_lock():
+        text = _read_proposals_text()
+        new_id = _next_proposal_id(text)
+        prop = Proposal(
+            id=new_id,
+            title=title,
+            kind=kind,
+            version=1,
+            executor=Role(executor),
+            status=Status.DRAFTING,
+            retry_count=0,
+            summary=parsed["summary"],
+            motivation=parsed["motivation"],
+            scope=parsed["scope"],
+            acceptance=parsed["acceptance"],
+            evidence=parsed["evidence"],
+            effort=effort,
+            risk=risk,
+            risk_note=risk_note,
+            linked_messages=[],
+        )
+        rendered = format_proposal(prop)
+        with open(_proposals_path(), "a") as fh:
+            fh.write("\n" + rendered)
+        return new_id
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conductor",
