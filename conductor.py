@@ -5,6 +5,7 @@ See Conductor Design §8.1 for the operation surface.
 from __future__ import annotations
 
 import argparse
+import json
 import re as _re
 import sys
 from dataclasses import dataclass, field
@@ -936,20 +937,122 @@ def build_parser() -> argparse.ArgumentParser:
         prog="conductor",
         description="Conductor v1 adapter — see Conductor Design §8.1.",
     )
-    subparsers = parser.add_subparsers(dest="op", required=False)
-    for op in OPERATIONS:
-        subparsers.add_parser(op, help=f"{op} operation (see §8.1)")
+    subs = parser.add_subparsers(dest="op", required=False)
+
+    # inbox-append
+    sp = subs.add_parser("inbox-append")
+    sp.add_argument("--from", dest="from_", required=True)
+    sp.add_argument("--to", required=True)
+    sp.add_argument("--kind", required=True)
+    sp.add_argument("--re", default=None)
+    sp.add_argument("--proposal", default=None)
+    sp.add_argument("--verdict", default=None)
+    sp.add_argument("--for-version", dest="for_version", type=int, default=None)
+
+    # inbox-read
+    sp = subs.add_parser("inbox-read")
+    sp.add_argument("--role", default=None)
+    sp.add_argument("--unacked-only", action="store_true")
+    sp.add_argument("--since", default=None)
+    sp.add_argument("--proposal", default=None)
+
+    # inbox-ack
+    sp = subs.add_parser("inbox-ack")
+    sp.add_argument("--message-id", dest="message_id", required=True)
+    sp.add_argument("--by", required=True)
+
+    # proposal-create
+    sp = subs.add_parser("proposal-create")
+    sp.add_argument("--title", required=True)
+    sp.add_argument("--kind", required=True)
+    sp.add_argument("--executor", required=True)
+    sp.add_argument("--effort", required=True)
+    sp.add_argument("--risk", required=True)
+    sp.add_argument("--risk-note", dest="risk_note", required=True)
+
+    # proposal-read
+    sp = subs.add_parser("proposal-read")
+    sp.add_argument("--id", default=None)
+    sp.add_argument("--status", default=None)
+
+    # proposal-edit-body
+    sp = subs.add_parser("proposal-edit-body")
+    sp.add_argument("--id", required=True)
+    sp.add_argument("--actor", required=True)
+
+    # proposal-set-status
+    sp = subs.add_parser("proposal-set-status")
+    sp.add_argument("--id", required=True)
+    sp.add_argument("--new-status", dest="new_status", required=True)
+    sp.add_argument("--actor", required=True)
+    sp.add_argument("--reason", default=None)
+    sp.add_argument("--executor", default=None)
+    sp.add_argument("--delegated-to", dest="delegated_to", default=None)
+    sp.add_argument("--delegated-paths", dest="delegated_paths", default=None,
+                    help="comma-separated list of vault paths")
+
+    # state
+    subs.add_parser("state")
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.op is None:
-        parser.print_help()
+
+    try:
+        if args.op is None:
+            parser.print_help()
+            return 0
+        elif args.op == "inbox-append":
+            body = sys.stdin.read()
+            new_id = op_inbox_append(
+                from_=args.from_, to=args.to, kind=args.kind, body=body,
+                proposal=args.proposal, re=args.re,
+                verdict=args.verdict, for_version=args.for_version,
+            )
+            print(new_id)
+        elif args.op == "inbox-read":
+            msgs = op_inbox_read(
+                role=args.role, unacked_only=args.unacked_only,
+                since=args.since, proposal=args.proposal,
+            )
+            print(json.dumps(msgs, indent=2))
+        elif args.op == "inbox-ack":
+            print(op_inbox_ack(message_id=args.message_id, by=args.by))
+        elif args.op == "proposal-create":
+            body = sys.stdin.read()
+            print(op_proposal_create(
+                title=args.title, kind=args.kind, executor=args.executor,
+                effort=args.effort, risk=args.risk, risk_note=args.risk_note,
+                body=body,
+            ))
+        elif args.op == "proposal-read":
+            props = op_proposal_read(id=args.id, status=args.status)
+            print(json.dumps(props, indent=2))
+        elif args.op == "proposal-edit-body":
+            body = sys.stdin.read()
+            print(op_proposal_edit_body(id=args.id, actor=args.actor, body=body))
+        elif args.op == "proposal-set-status":
+            paths = (
+                [p.strip() for p in args.delegated_paths.split(",") if p.strip()]
+                if args.delegated_paths else None
+            )
+            print(op_proposal_set_status(
+                id=args.id, new_status=args.new_status, actor=args.actor,
+                reason=args.reason, executor=args.executor,
+                delegated_to=args.delegated_to, delegated_paths=paths,
+            ))
+        elif args.op == "state":
+            print(json.dumps(op_state(), indent=2))
+        else:
+            print(f"unknown op: {args.op}", file=sys.stderr)
+            return 2
         return 0
-    print(f"NotImplementedError: {args.op}", file=sys.stderr)
-    return 2
+    except (FSMError, ValueError, StatusError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
