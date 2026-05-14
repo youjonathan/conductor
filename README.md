@@ -44,11 +44,14 @@ Each transition is gated by which actor is allowed to make it (`planner`,
 
 ## Watch one full cycle
 
-[![asciicast](https://asciinema.org/a/43RGDl67oKaAnQQr.svg)](https://asciinema.org/a/43RGDl67oKaAnQQr)
+![demo](./scripts/demo.gif)
 
 `scripts/demo.sh` runs the cycle above end-to-end through the CLI — Planner
 drafts, Builder reviews, human approves, Builder executes and hands off to
-Codex, Builder closes. One proposal in `✅ done`; full audit trail on the bus.
+Codex, Builder closes. One proposal in `✅ done`; full audit trail on the
+bus. The GIF is regenerated from `scripts/demo.cast` with
+[`agg`](https://github.com/asciinema/agg); a scrubbable version lives at
+[asciinema.org/a/43RGDl67oKaAnQQr](https://asciinema.org/a/43RGDl67oKaAnQQr).
 
 ## Quickstart
 
