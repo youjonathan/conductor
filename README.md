@@ -55,19 +55,33 @@ bus. The GIF is regenerated from `scripts/demo.cast` with
 
 ## Quickstart
 
-```bash
-git clone https://github.com/youjonathan/conductor.git && cd conductor
-pytest -v              # 12 test files, full coverage of the op surface
-./scripts/demo.sh      # run one full proposal lifecycle through the CLI
+### MCP (recommended)
+
+    pip install agent-conductor
+
+Add to your agent harness's MCP config (e.g. `~/.claude/mcp.json` for Claude Code,
+or the equivalent for your harness):
+
+```json
+{
+  "mcpServers": {
+    "conductor": {
+      "command": "conductor-mcp",
+      "env": { "CONDUCTOR_DIR": "/path/to/conductor-dir" }
+    }
+  }
+}
 ```
 
-The demo script seeds a temp `CONDUCTOR_DIR`, runs the cycle
-`🔵 → 🟡 → 🟢 → ⚙️ → ✅` through the CLI, and prints the resulting Inbox
-and Proposals files. Pass `KEEP=1` to keep the temp dir around:
+The agent sees eight tools: `inbox_append`, `inbox_read`, `inbox_ack`,
+`proposal_create`, `proposal_read`, `proposal_edit_body`,
+`proposal_set_status`, `state`.
 
-```bash
-KEEP=1 ./scripts/demo.sh
-```
+### CLI (scripting + debugging)
+
+    git clone https://github.com/youjonathan/conductor.git && cd conductor
+    pytest -v              # 16 test files, full coverage of the op surface
+    ./scripts/demo.sh      # run one full proposal lifecycle through the CLI
 
 ## Role prompts
 
@@ -144,13 +158,20 @@ Two `flock`-based mutexes guard the on-disk files:
 See [`CLAUDE.md`](./CLAUDE.md) for a deeper walk-through aimed at agents
 extending the adapter.
 
-## v1 → v2
+## Interfaces
 
-In v2, this CLI is replaced by an MCP server that exposes the same
-operations as tools. The name mapping is mechanical: every kebab-case op
-(`inbox-append`) becomes a snake_case tool (`inbox_append`); arguments and
-return shapes are preserved 1:1. Role prompts do not change between v1
-and v2.
+Conductor exposes its op surface through two transports backed by the same
+in-process op functions:
+
+- **`conductor-mcp` (canonical)** — a FastMCP server. The agent sees the 8
+  ops as MCP tools (kebab-case op names become snake_case tool names; args
+  and return shapes preserved 1:1). This is the recommended interface for
+  any agent harness.
+- **`conductor` (CLI)** — the original transport. Useful for scripting,
+  debugging the bus state, the asciinema demo, and shell-driven smoke tests.
+
+Both can hit the same `CONDUCTOR_DIR` concurrently — the file-bus's `flock`
+serializes writes correctly across processes.
 
 ## Tests
 
