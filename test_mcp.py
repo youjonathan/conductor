@@ -165,3 +165,47 @@ def test_proposal_read_returns_list(tmp_path, monkeypatch):
     assert len(result) == 1
     assert result[0]["id"] == "P-001"
     assert result[0]["status"] == "drafting"
+
+
+def test_proposal_edit_body_returns_ok(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor_mcp import proposal_create, proposal_edit_body, proposal_read
+    pid = proposal_create(
+        title="t", kind="refactor", executor="builder",
+        effort="S", risk="S", risk_note=".", body=SAMPLE_PROPOSAL_BODY,
+    )
+    new_body = SAMPLE_PROPOSAL_BODY.replace("Tiny refactor.", "Smaller refactor.")
+    result = proposal_edit_body(id=pid, by="planner", body=new_body)
+    assert result == "ok"
+    p = proposal_read(id=pid)[0]
+    assert p["version"] == 2
+
+
+def test_proposal_set_status_returns_ok(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor_mcp import proposal_create, proposal_set_status, proposal_read
+    pid = proposal_create(
+        title="t", kind="refactor", executor="builder",
+        effort="S", risk="S", risk_note=".", body=SAMPLE_PROPOSAL_BODY,
+    )
+    result = proposal_set_status(id=pid, new_status="awaiting-jonathan", by="planner")
+    assert result == "ok"
+    p = proposal_read(id=pid)[0]
+    assert p["status"] == "awaiting-jonathan"
+
+
+def test_proposal_set_status_invalid_transition_raises(tmp_path, monkeypatch):
+    """FSM violations bubble up — agent will see this via MCP error response."""
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor import FSMError
+    from conductor_mcp import proposal_create, proposal_set_status
+    pid = proposal_create(
+        title="t", kind="refactor", executor="builder",
+        effort="S", risk="S", risk_note=".", body=SAMPLE_PROPOSAL_BODY,
+    )
+    # 🔵 drafting → ✅ done is not a valid transition
+    with pytest.raises(FSMError):
+        proposal_set_status(id=pid, new_status="done", by="planner")

@@ -17,6 +17,7 @@ from pydantic import Field
 from conductor import (
     op_state, op_inbox_read, op_inbox_ack, op_inbox_append,
     op_proposal_create, op_proposal_read,
+    op_proposal_edit_body, op_proposal_set_status,
 )
 
 mcp = FastMCP("conductor")
@@ -102,6 +103,33 @@ def proposal_read(
 ) -> list[dict]:
     """Read proposals. Filters: id (exact match), status (slug or emoji)."""
     return op_proposal_read(id=id, status=status)
+
+
+@mcp.tool
+def proposal_edit_body(id: str, by: str, body: str) -> str:
+    """Edit a 🔵 drafting proposal's body. Bumps version, invalidates stale
+    votes. Returns 'ok'. Raises FSMError if the proposal is not at drafting."""
+    return op_proposal_edit_body(id=id, by=by, body=body)
+
+
+@mcp.tool
+def proposal_set_status(
+    id: str,
+    new_status: str,
+    by: str,
+    reason: str | None = None,
+    executor: str | None = None,
+    delegated_to: str | None = None,
+    delegated_paths: list[str] | None = None,
+) -> str:
+    """FSM-validated status transition. Atomic with an audit-note emit to the
+    inbox under a two-lock supermutation. Returns 'ok', or 'noop' for same-state
+    writes. Raises FSMError for invalid transitions or retry-cap violations."""
+    return op_proposal_set_status(
+        id=id, new_status=new_status, by=by,
+        reason=reason, executor=executor,
+        delegated_to=delegated_to, delegated_paths=delegated_paths,
+    )
 
 
 def main() -> None:
