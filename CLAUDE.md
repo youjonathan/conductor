@@ -35,11 +35,10 @@ files above — see `test_e2e_smoke.py::_seed` for the canonical layout.
 
 ## Architecture
 
-`conductor.py` is intentionally one file with four layered concerns:
+`conductor.py` is intentionally one file with five layered concerns:
 
-1. **Domain types** — `Role`, `Kind`, `Verdict`, `Status` enums and the
-   `Message` / `Proposal` dataclasses. `Status` carries both a slug and an
-   emoji; the on-disk format uses emoji, the JSON API uses slug.
+1. **Domain types** — `Role`, `Kind`, `Verdict`, `ProposalKind`, `Status` enums
+   and the `Message` / `Proposal` dataclasses.
 2. **Parsers / formatters** — `parse_inbox` / `format_message` and
    `parse_proposals` / `format_proposal` are the only code that touches the
    markdown grammar. Header/tag/section regexes live next to them. Keep the
@@ -53,7 +52,16 @@ files above — see `test_e2e_smoke.py::_seed` for the canonical layout.
    `OPERATIONS`. Each maps 1:1 to an argparse subcommand wired in
    `build_parser()` and dispatched in `main()`. Adding an op means: write
    `op_foo`, add it to `OPERATIONS`, add a `subs.add_parser("foo")` block,
-   add a `main()` branch.
+   add a `main()` branch — **and** add a matching `@mcp.tool` wrapper in
+   `conductor_mcp.py` (see layer 5).
+5. **MCP wrapper** — `conductor_mcp.py` is a thin FastMCP server. One
+   `@mcp.tool` per `op_*`; kebab-case op names map to snake_case tool names
+   (`inbox-append` → `inbox_append`). Args and return shapes pass through
+   unchanged; FastMCP handles protocol wrapping. The `inbox_append` tool
+   aliases its `from_` parameter to `from` via Pydantic so the MCP schema
+   matches v1's CLI flag and JSON return key. `main()` validates the
+   `CONDUCTOR_DIR` layout before `mcp.run()`; missing config exits with a
+   stderr message and code 1.
 
 ### FSM (proposal status transitions)
 

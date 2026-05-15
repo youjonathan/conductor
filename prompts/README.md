@@ -84,3 +84,16 @@ Don't change:
 - **FSM authority subset per role** (the adapter rejects violations).
 - **Codex confinement to Builder** (Planner never invokes Codex).
 - **Human-only `🟡 → 🟢 / ❌ / 🔵`** (the approval gate).
+
+## A note on transport
+
+These prompts use the **CLI invocation form** (`conductor inbox-read --role
+planner --unacked`). With v2's MCP server, your harness exposes the same ops
+as MCP tools instead — the agent calls `inbox_read(role="planner", unacked=true)`
+rather than shelling out. The semantics are identical; only the call syntax
+differs.
+
+A future revision will rewrite these prompts in a harness-agnostic form that
+works for either transport. Until then: keep the prompts as-is if you're
+using the CLI; adapt the syntax in your head (or in your harness's prompt
+template) if you're driving via MCP.
