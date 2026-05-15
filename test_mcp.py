@@ -91,3 +91,35 @@ def test_inbox_ack_creates_ack(tmp_path, monkeypatch):
     ack_id = inbox_ack(message_id=orig, by="builder")
     assert ack_id.startswith("M-")
     assert ack_id != orig
+
+
+def test_inbox_append_direct_call(tmp_path, monkeypatch):
+    """Direct Python call uses the `from_` parameter name (since Python sees
+    the raw kwarg, not the Pydantic alias)."""
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor_mcp import inbox_append
+    msg_id = inbox_append(
+        from_="planner", to="builder", kind="note", body="hello",
+    )
+    assert msg_id == "M-0001"
+
+
+# --- Alias test (through FastMCP Client; the only path where Pydantic alias
+#     validation runs) ---
+
+async def test_inbox_append_accepts_from_alias_via_client(tmp_path, monkeypatch):
+    """The MCP tool schema must accept `from` (the alias), not `from_`.
+    Direct Python call uses `from_` because Pydantic alias only fires during
+    FastMCP's tool invocation pipeline, not on raw Python calls."""
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from fastmcp import Client
+    from conductor_mcp import mcp
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "inbox_append",
+            {"from": "planner", "to": "builder", "kind": "note", "body": "hi"},
+        )
+    # FastMCP wraps the str return; .data exposes it
+    assert result.data == "M-0001"

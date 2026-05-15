@@ -9,11 +9,14 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
 from fastmcp import FastMCP
+from pydantic import Field
 
-from conductor import op_state, op_inbox_read, op_inbox_ack
+from conductor import (
+    op_state, op_inbox_read, op_inbox_ack, op_inbox_append,
+)
 
 mcp = FastMCP("conductor")
 
@@ -48,6 +51,29 @@ def inbox_ack(message_id: str, by: str) -> str:
     """Idempotently acknowledge a message. Returns the ack's id, or the existing
     ack's id if `by` has already acked `message_id`."""
     return op_inbox_ack(message_id=message_id, by=by)
+
+
+@mcp.tool
+def inbox_append(
+    from_: Annotated[str, Field(alias="from")],
+    to: str,
+    kind: str,
+    body: str,
+    proposal: str | None = None,
+    in_reply_to: str | None = None,
+    verdict: str | None = None,
+    for_version: int | None = None,
+) -> str:
+    """Append a message to the bus. Returns the new M-NNNN id.
+
+    Note: the `from` parameter is aliased — MCP callers send `{"from": ...}`,
+    Python sees `from_` internally (since `from` is a reserved keyword).
+    """
+    return op_inbox_append(
+        from_=from_, to=to, kind=kind, body=body,
+        proposal=proposal, in_reply_to=in_reply_to,
+        verdict=verdict, for_version=for_version,
+    )
 
 
 def main() -> None:
