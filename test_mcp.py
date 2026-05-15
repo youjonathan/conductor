@@ -209,3 +209,34 @@ def test_proposal_set_status_invalid_transition_raises(tmp_path, monkeypatch):
     # 🔵 drafting → ✅ done is not a valid transition
     with pytest.raises(FSMError):
         proposal_set_status(id=pid, new_status="done", by="planner")
+
+
+# --- E2E smoke through the FastMCP in-process Client ---
+
+async def test_server_lists_all_eight_tools_and_state_roundtrips(tmp_path, monkeypatch):
+    """Catch missing @mcp.tool decorators, registration order bugs, schema
+    generation failures, and protocol-layer regressions in one test."""
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from fastmcp import Client
+    from conductor_mcp import mcp
+    expected_names = {
+        "state",
+        "inbox_read",
+        "inbox_ack",
+        "inbox_append",
+        "proposal_create",
+        "proposal_read",
+        "proposal_edit_body",
+        "proposal_set_status",
+    }
+    async with Client(mcp) as client:
+        tools = await client.list_tools()
+        actual_names = {t.name for t in tools}
+        assert actual_names == expected_names
+
+        # Call state through the protocol and assert the structured return
+        result = await client.call_tool("state", {})
+        assert isinstance(result.data, dict)
+        assert "status_counts" in result.data
+        assert "unacked" in result.data
