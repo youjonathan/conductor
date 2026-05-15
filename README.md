@@ -12,8 +12,8 @@ them a bus.*
 message bus and an FSM-governed proposal ledger.** One session ("Planner")
 scans for work and drafts proposals; another ("Builder") reviews and
 executes them; a human approves the gate between drafting and execution.
-This repo is the v1 adapter — a single-file Python CLI both sessions invoke
-to read and mutate the shared state.
+Conductor exposes the shared operation surface through an MCP server for
+agent harnesses and a CLI for scripting/debugging.
 
 ```
                      ┌──────────────────────────────────┐
@@ -56,6 +56,13 @@ bus. The GIF is regenerated from `scripts/demo.cast` with
 ## Quickstart
 
 ### MCP (recommended)
+
+Install from source:
+
+    git clone https://github.com/youjonathan/conductor.git && cd conductor
+    pip install .
+
+After the v2 package is published, install from PyPI instead:
 
     pip install agent-conductor
 
@@ -145,15 +152,17 @@ Two `flock`-based mutexes guard the on-disk files:
 
 ## Architecture
 
-`conductor.py` is intentionally one file with four layers:
+`conductor.py` is intentionally one file with four core layers, with
+`conductor_mcp.py` as the MCP transport wrapper:
 
-1. **Domain types** — `Role`, `Kind`, `Verdict`, `Status` enums and the
+1. **Domain types** — `Role`, `Kind`, `Verdict`, `ProposalKind`, `Status` enums and the
    `Message` / `Proposal` dataclasses.
 2. **Parsers / formatters** — the only code that touches the on-disk
    markdown grammar. Round-trip stable (`parse → format → parse`).
 3. **Locking** — `inbox_lock()`, `proposals_lock()`, `supermutation()`.
 4. **Operations** — `op_*` functions, each wired to an argparse subcommand
    in `build_parser()` and dispatched in `main()`.
+5. **MCP wrapper** — `conductor_mcp.py` exposes the same ops as FastMCP tools.
 
 See [`CLAUDE.md`](./CLAUDE.md) for a deeper walk-through aimed at agents
 extending the adapter.

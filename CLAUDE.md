@@ -4,13 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-The v1 file-backed adapter for Conductor — a single-file Python CLI
-(`conductor.py`) that exposes the operation surface used by the Planner
-and Builder Claude Code sessions. Both sessions invoke it via Bash. In v2,
-the same op surface will be re-exposed as an MCP server; kebab-case op names
-(`inbox-append`) map mechanically to snake_case tool names (`inbox_append`)
-with arguments and return shapes preserved 1:1 — keep that invariant in mind
-when changing argparse names or return JSON.
+The file-backed adapter for Conductor. `conductor.py` owns the domain model,
+markdown storage, locking, FSM, and CLI; `conductor_mcp.py` exposes the same
+operation surface as a FastMCP server for agent harnesses. Kebab-case CLI ops
+(`inbox-append`) map mechanically to snake_case MCP tool names
+(`inbox_append`), with arguments and return shapes preserved 1:1.
 
 ## Commands
 
@@ -106,9 +104,9 @@ Approving a proposal with `delegated_paths` validates each path against the
 prefixes `Projects/`, `Concepts/`, `Papers/`, `Personal/`. Anything
 else raises `ValueError`. This is enforced adapter-side, not by the FSM.
 
-## v1 → v2 invariants
+## Interface invariants
 
 When editing op signatures, return shapes, or status/role/kind vocabulary,
-remember v2 will re-export the same surface as MCP tools. Don't drift the
-shapes casually — they're the v2 invariant. The Codex handoff template
-is downstream of this adapter and **not** part of the invariant.
+keep the CLI and MCP surfaces aligned. Don't drift the shapes casually; the
+Codex handoff template is downstream of this adapter and **not** part of the
+interface invariant.
