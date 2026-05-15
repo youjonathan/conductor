@@ -4,13 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-The v1 file-backed adapter for Conductor — a single-file Python CLI
-(`conductor.py`) that exposes the operation surface used by the Planner
-and Builder Claude Code sessions. Both sessions invoke it via Bash. In v2,
-the same op surface will be re-exposed as an MCP server; kebab-case op names
-(`inbox-append`) map mechanically to snake_case tool names (`inbox_append`)
-with arguments and return shapes preserved 1:1 — keep that invariant in mind
-when changing argparse names or return JSON.
+The file-backed adapter for Conductor. `conductor.py` owns the domain model,
+markdown storage, locking, FSM, and CLI; `conductor_mcp.py` exposes the same
+operation surface as a FastMCP server for agent harnesses. Kebab-case CLI ops
+(`inbox-append`) map mechanically to snake_case MCP tool names
+(`inbox_append`), with arguments and return shapes preserved 1:1.
 
 ## Commands
 
@@ -35,11 +33,10 @@ files above — see `test_e2e_smoke.py::_seed` for the canonical layout.
 
 ## Architecture
 
-`conductor.py` is intentionally one file with four layered concerns:
+`conductor.py` is intentionally one file with five layered concerns:
 
-1. **Domain types** — `Role`, `Kind`, `Verdict`, `Status` enums and the
-   `Message` / `Proposal` dataclasses. `Status` carries both a slug and an
-   emoji; the on-disk format uses emoji, the JSON API uses slug.
+1. **Domain types** — `Role`, `Kind`, `Verdict`, `ProposalKind`, `Status` enums
+   and the `Message` / `Proposal` dataclasses.
 2. **Parsers / formatters** — `parse_inbox` / `format_message` and
    `parse_proposals` / `format_proposal` are the only code that touches the
    markdown grammar. Header/tag/section regexes live next to them. Keep the
@@ -53,7 +50,16 @@ files above — see `test_e2e_smoke.py::_seed` for the canonical layout.
    `OPERATIONS`. Each maps 1:1 to an argparse subcommand wired in
    `build_parser()` and dispatched in `main()`. Adding an op means: write
    `op_foo`, add it to `OPERATIONS`, add a `subs.add_parser("foo")` block,
-   add a `main()` branch.
+   add a `main()` branch — **and** add a matching `@mcp.tool` wrapper in
+   `conductor_mcp.py` (see layer 5).
+5. **MCP wrapper** — `conductor_mcp.py` is a thin FastMCP server. One
+   `@mcp.tool` per `op_*`; kebab-case op names map to snake_case tool names
+   (`inbox-append` → `inbox_append`). Args and return shapes pass through
+   unchanged; FastMCP handles protocol wrapping. The `inbox_append` tool
+   aliases its `from_` parameter to `from` via Pydantic so the MCP schema
+   matches v1's CLI flag and JSON return key. `main()` validates the
+   `CONDUCTOR_DIR` layout before `mcp.run()`; missing config exits with a
+   stderr message and code 1.
 
 ### FSM (proposal status transitions)
 
@@ -98,9 +104,9 @@ Approving a proposal with `delegated_paths` validates each path against the
 prefixes `Projects/`, `Concepts/`, `Papers/`, `Personal/`. Anything
 else raises `ValueError`. This is enforced adapter-side, not by the FSM.
 
-## v1 → v2 invariants
+## Interface invariants
 
 When editing op signatures, return shapes, or status/role/kind vocabulary,
-remember v2 will re-export the same surface as MCP tools. Don't drift the
-shapes casually — they're the v2 invariant. The Codex handoff template
-is downstream of this adapter and **not** part of the invariant.
+keep the CLI and MCP surfaces aligned. Don't drift the shapes casually; the
+Codex handoff template is downstream of this adapter and **not** part of the
+interface invariant.

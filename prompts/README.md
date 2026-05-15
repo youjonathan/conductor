@@ -34,8 +34,9 @@ echo "# Conductor Inbox"     > "$CONDUCTOR_DIR/Conductor Inbox.md"
 echo "# Conductor Proposals" > "$CONDUCTOR_DIR/Conductor Proposals.md"
 ```
 
-Both sessions also need the `conductor` CLI on `PATH` (from this repo's
-`pip install .`).
+Both sessions need access to the Conductor operation surface, either through
+the `conductor-mcp` server in the agent harness or through the `conductor`
+CLI on `PATH` (from this repo's `pip install .`).
 
 **Planner** runs from the knowledge-base root. Its `cwd` is wherever your
 notes live.
@@ -80,7 +81,20 @@ project hub / log notes you keep, and verbs can be renamed or extended.
 
 Don't change:
 
-- **Bus mutation discipline** (every write goes through `conductor` CLI).
+- **Bus mutation discipline** (every write goes through Conductor: MCP tool or CLI).
 - **FSM authority subset per role** (the adapter rejects violations).
 - **Codex confinement to Builder** (Planner never invokes Codex).
 - **Human-only `🟡 → 🟢 / ❌ / 🔵`** (the approval gate).
+
+## A note on transport
+
+These prompts use the **CLI invocation form** (`conductor inbox-read --role
+planner --unacked`). With v2's MCP server, your harness exposes the same ops
+as MCP tools instead — the agent calls `inbox_read(role="planner", unacked=true)`
+rather than shelling out. The semantics are identical; only the call syntax
+differs.
+
+A future revision will rewrite these prompts in a harness-agnostic form that
+works for either transport. Until then: keep the prompts as-is if you're
+using the CLI; adapt the syntax in your head (or in your harness's prompt
+template) if you're driving via MCP.

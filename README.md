@@ -12,8 +12,8 @@ them a bus.*
 message bus and an FSM-governed proposal ledger.** One session ("Planner")
 scans for work and drafts proposals; another ("Builder") reviews and
 executes them; a human approves the gate between drafting and execution.
-This repo is the v1 adapter — a single-file Python CLI both sessions invoke
-to read and mutate the shared state.
+Conductor exposes the shared operation surface through an MCP server for
+agent harnesses and a CLI for scripting/debugging.
 
 ```
                      ┌──────────────────────────────────┐
@@ -55,19 +55,40 @@ bus. The GIF is regenerated from `scripts/demo.cast` with
 
 ## Quickstart
 
-```bash
-git clone https://github.com/youjonathan/conductor.git && cd conductor
-pytest -v              # 12 test files, full coverage of the op surface
-./scripts/demo.sh      # run one full proposal lifecycle through the CLI
+### MCP (recommended)
+
+Install from source:
+
+    git clone https://github.com/youjonathan/conductor.git && cd conductor
+    pip install .
+
+After the v2 package is published, install from PyPI instead:
+
+    pip install agent-conductor
+
+Add to your agent harness's MCP config (e.g. `~/.claude/mcp.json` for Claude Code,
+or the equivalent for your harness):
+
+```json
+{
+  "mcpServers": {
+    "conductor": {
+      "command": "conductor-mcp",
+      "env": { "CONDUCTOR_DIR": "/path/to/conductor-dir" }
+    }
+  }
+}
 ```
 
-The demo script seeds a temp `CONDUCTOR_DIR`, runs the cycle
-`🔵 → 🟡 → 🟢 → ⚙️ → ✅` through the CLI, and prints the resulting Inbox
-and Proposals files. Pass `KEEP=1` to keep the temp dir around:
+The agent sees eight tools: `inbox_append`, `inbox_read`, `inbox_ack`,
+`proposal_create`, `proposal_read`, `proposal_edit_body`,
+`proposal_set_status`, `state`.
 
-```bash
-KEEP=1 ./scripts/demo.sh
-```
+### CLI (scripting + debugging)
+
+    git clone https://github.com/youjonathan/conductor.git && cd conductor
+    pytest -v              # 16 test files, full coverage of the op surface
+    ./scripts/demo.sh      # run one full proposal lifecycle through the CLI
 
 ## Role prompts
 
@@ -131,26 +152,35 @@ Two `flock`-based mutexes guard the on-disk files:
 
 ## Architecture
 
-`conductor.py` is intentionally one file with four layers:
+`conductor.py` is intentionally one file with four core layers, with
+`conductor_mcp.py` as the MCP transport wrapper:
 
-1. **Domain types** — `Role`, `Kind`, `Verdict`, `Status` enums and the
+1. **Domain types** — `Role`, `Kind`, `Verdict`, `ProposalKind`, `Status` enums and the
    `Message` / `Proposal` dataclasses.
 2. **Parsers / formatters** — the only code that touches the on-disk
    markdown grammar. Round-trip stable (`parse → format → parse`).
 3. **Locking** — `inbox_lock()`, `proposals_lock()`, `supermutation()`.
 4. **Operations** — `op_*` functions, each wired to an argparse subcommand
    in `build_parser()` and dispatched in `main()`.
+5. **MCP wrapper** — `conductor_mcp.py` exposes the same ops as FastMCP tools.
 
 See [`CLAUDE.md`](./CLAUDE.md) for a deeper walk-through aimed at agents
 extending the adapter.
 
-## v1 → v2
+## Interfaces
 
-In v2, this CLI is replaced by an MCP server that exposes the same
-operations as tools. The name mapping is mechanical: every kebab-case op
-(`inbox-append`) becomes a snake_case tool (`inbox_append`); arguments and
-return shapes are preserved 1:1. Role prompts do not change between v1
-and v2.
+Conductor exposes its op surface through two transports backed by the same
+in-process op functions:
+
+- **`conductor-mcp` (canonical)** — a FastMCP server. The agent sees the 8
+  ops as MCP tools (kebab-case op names become snake_case tool names; args
+  and return shapes preserved 1:1). This is the recommended interface for
+  any agent harness.
+- **`conductor` (CLI)** — the original transport. Useful for scripting,
+  debugging the bus state, the asciinema demo, and shell-driven smoke tests.
+
+Both can hit the same `CONDUCTOR_DIR` concurrently — the file-bus's `flock`
+serializes writes correctly across processes.
 
 ## Tests
 
