@@ -123,3 +123,45 @@ async def test_inbox_append_accepts_from_alias_via_client(tmp_path, monkeypatch)
         )
     # FastMCP wraps the str return; .data exposes it
     assert result.data == "M-0001"
+
+
+SAMPLE_PROPOSAL_BODY = """### Summary
+Tiny refactor.
+
+### Motivation
+Cleanup.
+
+### Scope
+- foo.py
+
+### Acceptance
+- tests pass
+
+### Evidence
+- foo.py:1
+"""
+
+
+def test_proposal_create_returns_id(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor_mcp import proposal_create
+    pid = proposal_create(
+        title="t", kind="refactor", executor="builder",
+        effort="S", risk="S", risk_note=".", body=SAMPLE_PROPOSAL_BODY,
+    )
+    assert pid == "P-001"
+
+
+def test_proposal_read_returns_list(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setenv("CONDUCTOR_DIR", str(tmp_path))
+    from conductor_mcp import proposal_create, proposal_read
+    proposal_create(
+        title="t", kind="refactor", executor="builder",
+        effort="S", risk="S", risk_note=".", body=SAMPLE_PROPOSAL_BODY,
+    )
+    result = proposal_read()
+    assert len(result) == 1
+    assert result[0]["id"] == "P-001"
+    assert result[0]["status"] == "drafting"

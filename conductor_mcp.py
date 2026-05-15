@@ -16,6 +16,7 @@ from pydantic import Field
 
 from conductor import (
     op_state, op_inbox_read, op_inbox_ack, op_inbox_append,
+    op_proposal_create, op_proposal_read,
 )
 
 mcp = FastMCP("conductor")
@@ -74,6 +75,33 @@ def inbox_append(
         proposal=proposal, in_reply_to=in_reply_to,
         verdict=verdict, for_version=for_version,
     )
+
+
+@mcp.tool
+def proposal_create(
+    title: str,
+    kind: str,
+    executor: str,
+    effort: str,
+    risk: str,
+    risk_note: str,
+    body: str,
+) -> str:
+    """Create a new proposal at version=1, status=🔵 drafting. Body must contain
+    Summary, Motivation, Scope, Acceptance, Evidence sections."""
+    return op_proposal_create(
+        title=title, kind=kind, executor=executor,
+        effort=effort, risk=risk, risk_note=risk_note, body=body,
+    )
+
+
+@mcp.tool
+def proposal_read(
+    id: str | None = None,
+    status: str | None = None,
+) -> list[dict]:
+    """Read proposals. Filters: id (exact match), status (slug or emoji)."""
+    return op_proposal_read(id=id, status=status)
 
 
 def main() -> None:
